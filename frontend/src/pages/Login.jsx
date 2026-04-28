@@ -23,16 +23,22 @@ export default function Login() {
         setMsg("");
 
         try {
-            const res = await API.post("/auth/login", { email, password });
+            // Using the new user authentication endpoint
+            const res = await API.post("/user-auth/user/login", { email, password });
 
             if (res.data.success) {
-                localStorage.setItem("token", res.data.token);
-                navigate("/editor");
-            } else {
-                setMsg("Invalid email or password");
+                if (res.data.resetRequired) {
+                    // Redirect to password reset page with the temporary token
+                    localStorage.setItem("resetToken", res.data.token);
+                    navigate("/user/reset-password");
+                } else if (res.data.faceMatchRequired) {
+                    // Redirect to face match page with the verification token
+                    localStorage.setItem("faceMatchToken", res.data.token);
+                    navigate("/user/face-match");
+                }
             }
         } catch (err) {
-            setMsg(err.response?.data?.message || "Login service unavailable");
+            setMsg(err.response?.data?.message || "Login failed. Please check your credentials.");
         } finally {
             setLoading(false);
         }
@@ -58,10 +64,10 @@ export default function Login() {
                             <LogIn className="w-8 h-8 text-white" />
                         </div>
                         <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
-                            Welcome back
+                            User Login
                         </h2>
                         <p className="text-gray-500 mt-2">
-                            Please enter your details to sign in
+                            Access your secure offer portal
                         </p>
                     </div>
 
@@ -76,7 +82,7 @@ export default function Login() {
                                 </div>
                                 <input
                                     type="email"
-                                    placeholder="admin@example.com"
+                                    placeholder="your@email.com"
                                     className="glass-input block w-full pl-11 pr-4 py-3 text-gray-900 placeholder-gray-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
@@ -124,13 +130,22 @@ export default function Login() {
                                     Authenticating...
                                 </>
                             ) : (
-                                "Sign in to Dashboard"
+                                "Continue to Verification"
                             )}
                         </button>
                     </form>
 
-                    <p className="mt-8 text-center text-xs text-gray-400">
-                        &copy; {new Date().getFullYear()} Offer Editer Admin Portal. All rights reserved.
+                    <div className="mt-6 text-center border-t border-gray-100 pt-6">
+                        <button 
+                            onClick={() => navigate('/admin/login')}
+                            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors"
+                        >
+                            Are you an Admin? Sign in here
+                        </button>
+                    </div>
+
+                    <p className="mt-8 text-center text-xs text-gray-400 font-medium">
+                        New user? Check your email for login instructions.
                     </p>
                 </div>
             </motion.div>

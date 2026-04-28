@@ -10,6 +10,11 @@ const adminSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    employeeId: {
+      type: String,
+      unique: true,
+      sparse: true, // Allow multiple nulls if some admins don't have it yet
+    },
     password: {
       type: String,
       required: true,
@@ -27,10 +32,9 @@ const adminSchema = new mongoose.Schema(
 );
 
 // 🔥 Automatically hash password before saving
-adminSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
+adminSchema.pre('save', async function() {
+  if (!this.isModified('password')) return;
   this.password = await bcrypt.hash(this.password, 10);
-  next();
 });
 
 // 🔥 Compare password method

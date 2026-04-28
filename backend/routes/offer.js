@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/authMiddleware');
+const { protect, protectWithFace } = require('../middleware/authMiddleware');
 const axios = require('axios');
 const { google } = require('googleapis');
 const { Readable } = require('stream');
@@ -107,14 +107,14 @@ async function checkFileExistsInDrive(fileId) {
 // ======================================================
 // 🔹 SAVE OFFER
 // ======================================================
-router.post('/save', protect, async (req, res) => {
+router.post('/save', protectWithFace, async (req, res) => {
     res.json({ message: 'Offer saved', data: req.body });
 });
 
 // ======================================================
 // 🔹 SEND EMAIL (BREVO)
 // ======================================================
-router.post('/send-email', protect, async (req, res) => {
+router.post('/send-email', protectWithFace, async (req, res) => {
     try {
         const { toEmail, candidateName, pdfBase64, customFileName, customSubject, customMailContent } = req.body;
 
@@ -170,7 +170,7 @@ router.post('/send-email', protect, async (req, res) => {
 // ======================================================
 // 🔹 BULK UPLOAD
 // ======================================================
-router.post('/bulk-upload', protect, async (req, res) => {
+router.post('/bulk-upload', protectWithFace, async (req, res) => {
     try {
         const { candidates } = req.body;
 

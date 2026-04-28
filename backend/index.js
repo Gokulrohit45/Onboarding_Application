@@ -44,6 +44,7 @@ const relievingRoutes = require('./routes/relievingExperience');
 const probationRoutes = require('./routes/probationConfirmation');
 const salaryHikeRoutes = require('./routes/salaryHike');
 const otpRoutes = require('./routes/otp');
+const userAuthRoutes = require('./routes/userAuth');
 
 const app = express();
 
@@ -69,17 +70,17 @@ app.use(cors({
         // allow requests with no origin (like mobile apps or curl requests)
         // also, browsers might send "null" string for local HTML file access
         if (!origin || origin === 'null') return callback(null, true);
-        
-        const isLocalDev = origin.startsWith('http://localhost') || 
-                           origin.startsWith('http://127.0.0.1') || 
-                           origin.startsWith('http://192.168.') || 
-                           origin.startsWith('http://10.') ||
-                           origin.startsWith('http://172.') ||
-                           // Matches simple local hostnames (no dots, e.g. http://desktop-xl)
-                           /^http:\/\/[^\.]+(:\d+)?$/.test(origin);
-        
+
+        const isLocalDev = origin.startsWith('http://localhost') ||
+            origin.startsWith('http://127.0.0.1') ||
+            origin.startsWith('http://192.168.') ||
+            origin.startsWith('http://10.') ||
+            origin.startsWith('http://172.') ||
+            // Matches simple local hostnames (no dots, e.g. http://desktop-xl)
+            /^http:\/\/[^\.]+(:\d+)?$/.test(origin);
+
         const dynamicFrontend = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, '') : null;
-        
+
         if (allowedOrigins.indexOf(origin) !== -1 || isLocalDev || (dynamicFrontend && origin === dynamicFrontend)) {
             callback(null, true);
         } else {
@@ -111,6 +112,7 @@ app.use('/api/relieving', relievingRoutes);
 app.use('/api/probation', probationRoutes);
 app.use('/api/salary-hike', salaryHikeRoutes);
 app.use('/api/otp', otpRoutes);
+app.use('/api/user-auth', userAuthRoutes);
 
 // Health check route for Render
 app.get('/', (req, res) => {

@@ -4,11 +4,11 @@ const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 
 // 🔥 Generate JWT
-const generateToken = (id, email) => {
+const generateToken = (id, email, employeeId, faceVerified = false) => {
   return jwt.sign(
-    { id, email },
+    { id, email, employee_id: employeeId, faceVerified },
     process.env.JWT_SECRET,
-    { expiresIn: '8h' }
+    { algorithm: 'HS512', expiresIn: '8h' }
   );
 };
 
@@ -32,12 +32,18 @@ router.post('/login', async (req, res) => {
     if (!isMatch)
       return res.status(401).json({ message: 'Invalid credentials' });
 
-    const token = generateToken(admin._id, admin.email);
+    // Initial token has faceVerified: false
+    const token = generateToken(admin._id, admin.email, admin.employeeId, false);
+
+    console.log(`✅ Login successful: ${admin.email} (Employee ID: ${admin.employeeId || 'N/A'})`);
+    console.log(`🔑 JWT Token: ${token}`);
 
     res.json({
       success: true,
       token,
       email: admin.email,
+      employeeId: admin.employeeId,
+      faceVerified: false
     });
 
   } catch (err) {
@@ -49,26 +55,68 @@ router.post('/login', async (req, res) => {
 });
 
 // ===============================
+// 🛡️ VERIFY FACE CALLBACK
+// ===============================
+router.post('/verify-face', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ message: 'Token required' });
+    }
+
+    // Verify the incoming token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Issue a NEW token with faceVerified: true
+    const newToken = generateToken(decoded.id, decoded.email, decoded.employee_id, true);
+
+    console.log(`✅ Face Verified for: ${decoded.email}`);
+    console.log(`🔑 Verified JWT Token: ${newToken}`);
+
+    res.json({
+      success: true,
+      token: newToken,
+      faceVerified: true
+    });
+
+  } catch (err) {
+    res.status(401).json({
+      message: 'Invalid or expired face verification token',
+      error: err.message,
+    });
+  }
+});
+
+// ===============================
 // 🔥 SEED ADMIN (RUN ONCE)
 // ===============================
 router.post('/seed', async (req, res) => {
   try {
-    const existing = await Admin.findOne({
-      email: 'admin@vtabsquare.com',
-    });
+    const targetEmail = 'techdotsanjay@gmail.com';
+    const targetPassword = '12345';
+    const targetEmpId = 'EMP017';
 
-    if (existing)
-      return res.json({ message: 'Admin already exists' });
+    const existing = await Admin.findOne({ email: targetEmail });
+
+    if (existing) {
+      existing.employeeId = targetEmpId;
+      existing.password = targetPassword; // This will trigger the pre-save hook to re-hash
+      await existing.save();
+      return res.json({ message: 'Admin updated successfully', email: targetEmail, employeeId: targetEmpId });
+    }
 
     await Admin.create({
-      email: 'admin@vtabsquare.com',
-      password: '12345', // will auto-hash
+      email: targetEmail,
+      password: targetPassword,
+      employeeId: targetEmpId,
     });
 
     res.json({
       message: 'Admin created successfully',
-      email: 'admin@vtabsquare.com',
-      password: '12345',
+      email: targetEmail,
+      password: targetPassword,
+      employeeId: targetEmpId,
     });
 
   } catch (err) {

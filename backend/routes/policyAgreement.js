@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/authMiddleware');
+const { protect, protectWithFace } = require('../middleware/authMiddleware');
 const axios = require('axios');
 const { google } = require('googleapis');
 const { Readable } = require('stream');
@@ -93,7 +93,7 @@ async function checkFileExistsInDrive(fileId) {
 // ======================================================
 // 🔹 BULK UPLOAD
 // ======================================================
-router.post('/bulk-upload', protect, async (req, res) => {
+router.post('/bulk-upload', protectWithFace, async (req, res) => {
     try {
         const { candidates } = req.body;
         if (!candidates || candidates.length === 0) return res.status(400).json({ message: 'No data' });
@@ -169,7 +169,7 @@ router.post('/bulk-upload', protect, async (req, res) => {
 // ======================================================
 // 🔹 SEND EMAIL (BREVO)
 // ======================================================
-router.post('/send-email', protect, async (req, res) => {
+router.post('/send-email', protectWithFace, async (req, res) => {
     try {
         const { toEmail, candidateName, pdfBase64, customFileName, customSubject, customMailContent } = req.body;
         if (!toEmail || !candidateName || !pdfBase64) return res.status(400).json({ message: 'Missing fields' });

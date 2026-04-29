@@ -18,8 +18,12 @@ export default function AdminDashboard() {
     const fetchUsers = async () => {
         try {
             const token = localStorage.getItem("adminToken");
-            const res = await API.get("/user-auth/admin/users", {
-                headers: { Authorization: `Bearer ${token}` }
+            const res = await API.get(`/user-auth/admin/users?t=${Date.now()}`, {
+                headers: { 
+                    Authorization: `Bearer ${token}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
             });
             setUsers(res.data);
         } catch (err) {

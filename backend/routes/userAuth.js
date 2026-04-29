@@ -55,7 +55,12 @@ router.post('/admin/create-user', protect, async (req, res) => {
         await user.save();
 
         // URLs for the email
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        // Provide a robust fallback to the live Render URL if FRONTEND_URL is not set
+        const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
+        const fallbackUrl = isProduction 
+            ? 'https://onboardingapp-renderdeployment.onrender.com' 
+            : 'http://localhost:5173';
+        const frontendUrl = process.env.FRONTEND_URL || fallbackUrl;
         const loginUrl = `${frontendUrl}/user/login`;
         const verificationUrl = `${frontendUrl}/user/verify-face?token=${verificationToken}`;
 

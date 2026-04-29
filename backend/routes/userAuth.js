@@ -99,10 +99,15 @@ router.post('/user/verify-face', async (req, res) => {
             return res.status(404).json({ message: 'User not found.' });
         }
 
+        console.log(`[VERIFY-FACE] Attempting verification for User ID: ${decoded.id}`);
         user.faceData = faceData;
         user.isVerified = true;
-        user.faceVerificationToken = null; // Clear token after use
+        user.markModified('faceData');
+        user.markModified('isVerified');
+        user.faceVerificationToken = null; 
+        
         await user.save();
+        console.log(`[VERIFY-FACE] ✅ Success! User ${user.email} is now verified.`);
 
         res.json({ success: true, message: 'Face data verified and stored. You can now login.' });
 

@@ -97,26 +97,24 @@ router.post('/seed', async (req, res) => {
     const targetPassword = '12345';
     const targetEmpId = 'EMP017';
 
-    const existing = await Admin.findOne({ email: targetEmail });
-
-    if (existing) {
-      existing.employeeId = targetEmpId;
-      existing.password = targetPassword; // This will trigger the pre-save hook to re-hash
-      await existing.save();
-      return res.json({ message: 'Admin updated successfully', email: targetEmail, employeeId: targetEmpId });
+    // Seed second admin
+    const admin2Email = 'admin@vtabsquare.com';
+    const admin2Password = '12345';
+    const existing2 = await Admin.findOne({ email: admin2Email });
+    if (!existing2) {
+      await Admin.create({
+        email: admin2Email,
+        password: admin2Password,
+        employeeId: 'ADM001',
+      });
     }
 
-    await Admin.create({
-      email: targetEmail,
-      password: targetPassword,
-      employeeId: targetEmpId,
-    });
-
     res.json({
-      message: 'Admin created successfully',
-      email: targetEmail,
-      password: targetPassword,
-      employeeId: targetEmpId,
+      message: 'Admins seeded successfully',
+      credentials: [
+        { email: targetEmail, password: targetPassword },
+        { email: admin2Email, password: admin2Password }
+      ]
     });
 
   } catch (err) {

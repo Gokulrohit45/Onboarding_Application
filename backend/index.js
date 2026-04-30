@@ -137,3 +137,12 @@ mongoose
         console.error('MongoDB connection error:', err.message);
         process.exit(1);
     });
+
+// Global Error Handlers for debugging
+process.on('uncaughtException', (err) => {
+    console.error('🔥 UNCAUGHT EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🔥 UNHANDLED REJECTION:', reason);
+});

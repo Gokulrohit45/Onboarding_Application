@@ -258,9 +258,10 @@ router.post('/user/match-face', async (req, res) => {
 // ======================================================
 router.get('/admin/users', protect, async (req, res) => {
     try {
-        console.log(`[ADMIN] Fetching users from database: ${mongoose.connection.name} (Host: ${mongoose.connection.host})`);
+        console.log(`[ADMIN] DB Name: ${mongoose.connection.name}`);
+        console.log(`[ADMIN] Collection Name: ${User.collection.name}`);
         const users = await User.find().select('-password -tempPassword -faceData');
-        console.log(`[ADMIN] Found ${users.length} users in database.`);
+        console.log(`[ADMIN] Found ${users.length} users.`);
         res.json(users);
     } catch (err) {
         console.error('[ADMIN] Error fetching users:', err);

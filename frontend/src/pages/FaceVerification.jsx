@@ -69,7 +69,8 @@ export default function FaceVerification() {
                 setTimeout(() => navigate("/user/login"), 2000);
             }
         } catch (err) {
-            setError(err.response?.data?.message || "Verification failed. Token may be expired.");
+            console.error("Verification Error:", err);
+            setError(err.response?.data?.message || "Verification failed. Please check your connection or contact support.");
         } finally {
             setCapturing(false);
         }

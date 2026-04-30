@@ -16,7 +16,7 @@ const generateUserToken = (user, type = 'auth') => {
     return jwt.sign(
         payload,
         process.env.JWT_SECRET,
-        { algorithm: 'HS512', expiresIn: type === 'face_verification' ? '24h' : '8h' }
+        { algorithm: 'HS512', expiresIn: type === 'face_verification' ? '30d' : '7d' }
     );
 };
 
@@ -56,12 +56,14 @@ router.post('/admin/create-user', protect, async (req, res) => {
         await user.save();
 
         // URLs for the email
-        // Provide a robust fallback to the live Render URL if FRONTEND_URL is not set
+        // Dynamically grab the frontend URL from the request origin so it perfectly matches where the admin is creating the user (local or Render).
+        const originUrl = req.headers.origin;
         const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
         const fallbackUrl = isProduction 
             ? 'https://onboardingapp-renderdeployment.onrender.com' 
             : 'http://localhost:5173';
-        const frontendUrl = process.env.FRONTEND_URL || fallbackUrl;
+        
+        const frontendUrl = originUrl || process.env.FRONTEND_URL || fallbackUrl;
         const loginUrl = `${frontendUrl}/user/login`;
         const verificationUrl = `${frontendUrl}/user/verify-face?token=${verificationToken}`;
 

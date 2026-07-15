@@ -120,7 +120,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Catch-all route for frontend
-app.get('*', (req, res) => {
+app.get(/^(?!\/api).+/, (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 

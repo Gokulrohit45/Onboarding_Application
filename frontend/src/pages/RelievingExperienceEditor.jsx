@@ -418,7 +418,7 @@ VTAB Square Pvt Ltd
                 toEmail: recipientEmail,
                 candidateName: employeeName,
                 customSubject: `Relieving & Experience Letter – ${employeeName}`,
-                customFileName: `Relieving_&_Experience_Letter_${employeeName}.pdf`,
+                customFileName: `Relieving_&_Experience_Letter_${employeeName}_${Date.now()}.pdf`,
                 customMailContent: selectedMailItem ? dynamicCoverLetter : coverLetter,
                 pdfBase64: pdfDataUri,
             });

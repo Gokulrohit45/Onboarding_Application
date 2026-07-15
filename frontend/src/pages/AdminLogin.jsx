@@ -27,6 +27,8 @@ export default function AdminLogin() {
             const res = await API.post("/auth/login", { email, password });
 
             if (res.data.success) {
+                localStorage.removeItem("token");
+                localStorage.removeItem("userToken");
                 localStorage.setItem("adminToken", res.data.token);
                 localStorage.setItem("role", "admin");
                 navigate("/admin/dashboard");

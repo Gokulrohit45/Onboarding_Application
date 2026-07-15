@@ -428,7 +428,7 @@ VTAB Square Pvt Ltd
             }
             pdfDataUri = selectedMailItem.pdfBase64;
             candidateName = selectedMailItem.employeeName || 'Employee';
-            customFileName = `Salary_Hike_Notification_${candidateName}.pdf`;
+            customFileName = `Salary_Hike_Notification_${candidateName}_${Date.now()}.pdf`;
 
             const formattedDate = selectedMailItem.effectiveDate
                 ? new Date(selectedMailItem.effectiveDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -467,7 +467,7 @@ VTAB Square Pvt Ltd
                 return;
             }
             candidateName = formData.employeeName || 'Employee';
-            customFileName = `Salary_Hike_Notification_${candidateName}.pdf`;
+            customFileName = `Salary_Hike_Notification_${candidateName}_${Date.now()}.pdf`;
             dynamicCoverLetter = coverLetter;
         }
 

@@ -483,7 +483,7 @@ VTAB Square Pvt Ltd (Now Part of Siroco)
                 toEmail: recipientEmail,
                 candidateName: candidateName,
                 customSubject: `Policy Agreement - ${candidateName}`,
-                customFileName: `Policy_Agreement_Letter_${candidateName}.pdf`,
+                customFileName: `Policy_Agreement_Letter_${candidateName}_${Date.now()}.pdf`,
                 customMailContent: selectedMailItem ? `Dear ${candidateName},
 
 Greetings from VTAB Square Pvt Ltd.

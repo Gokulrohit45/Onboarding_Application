@@ -467,7 +467,7 @@ VTAB Square Pvt Ltd
                 toEmail: recipientEmail,
                 candidateName: employeeName,
                 customSubject: `Probation Confirmation Letter – ${employeeName}`,
-                customFileName: `Probation_Confirmation_Letter_${employeeName}.pdf`,
+                customFileName: `Probation_Confirmation_Letter_${employeeName}_${Date.now()}.pdf`,
                 customMailContent: dynamicCoverLetter,
                 pdfBase64: pdfDataUri,
             });

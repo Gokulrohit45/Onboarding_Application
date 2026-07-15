@@ -33,7 +33,10 @@ API.interceptors.response.use(
     (error) => {
         if (error.response && error.response.status === 401) {
             localStorage.removeItem('token');
+            localStorage.removeItem('adminToken');
+            localStorage.removeItem('userToken');
             localStorage.removeItem('user');
+            localStorage.removeItem('role');
             window.location.href = '/';
         }
         return Promise.reject(error);

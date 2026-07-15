@@ -27,6 +27,10 @@ export default function Login() {
             const res = await API.post("/user-auth/user/login", { email, password });
 
             if (res.data.success) {
+                localStorage.removeItem("token");
+                localStorage.removeItem("adminToken");
+                localStorage.removeItem("userToken");
+                
                 if (res.data.resetRequired) {
                     // Redirect to password reset page with the temporary token
                     localStorage.setItem("resetToken", res.data.token);

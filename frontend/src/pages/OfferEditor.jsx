@@ -521,7 +521,7 @@ const OfferEditor = () => {
                 toEmail: recipientEmail,
                 candidateName: candidateName,
                 joiningDate: joinedDateFormatted,
-                customFileName: `Offer_Letter_${candidateName}.pdf`,
+                customFileName: `Offer_Letter_${candidateName}_${Date.now()}.pdf`,
                 customSubject: `Confirmation of Joining – ${mailDesignation}`,
                 customMailContent: `Dear ${candidateName},
  

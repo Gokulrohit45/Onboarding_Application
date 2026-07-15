@@ -66,7 +66,7 @@ const SalaryHikeEditor = () => {
 
         setCoverLetter(`Subject: Salary Hike Notification
 
-Dear Mr. ${formData.employeeName || 'Syed'},
+Dear Mr. ${formData.employeeName || 'Employee'},
 
 Greetings from VTAB Square Pvt Ltd.
 

@@ -5,7 +5,7 @@ const getBaseUrl = () => {
         return import.meta.env.VITE_API_BASE_URL;
     }
     if (import.meta.env.MODE === 'production') {
-        return 'https://onboardingapp-renderdeployment-backend.onrender.com/api';
+        return '/api';
     }
     // Handle accessing local dev server from another device on the same network
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {

@@ -49,7 +49,7 @@ const userAuthRoutes = require('./routes/userAuth');
 const app = express();
 
 // Serve static files from the frontend dist folder
-// app.use(express.static(path.join(__dirname, '../frontend/dist')));
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
 
 const allowedOrigins = [
     'http://localhost:5173',
@@ -114,15 +114,15 @@ app.use('/api/salary-hike', salaryHikeRoutes);
 app.use('/api/otp', otpRoutes);
 app.use('/api/user-auth', userAuthRoutes);
 
-// Health check route for Render
-app.get('/', (req, res) => {
+// Health check route for Render (moved to /api/health)
+app.get('/api/health', (req, res) => {
     res.status(200).send('Backend API is running');
 });
 
 // Catch-all route for frontend
-// app.get(/^(?!\/api).+/, (req, res) => {
-//     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
-// });
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+});
 
 // Connect MongoDB and start server
 mongoose

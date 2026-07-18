@@ -2,93 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect, protectWithFace } = require('../middleware/authMiddleware');
 const axios = require('axios');
-const { google } = require('googleapis');
-const { Readable } = require('stream');
-const PolicyAgreement = require('../models/PolicyAgreement');
-const fs = require('fs');
-const path = require('path');
-
-// ✅ Load OAuth2 Credentials & Token
-const { getOAuth2Client } = require('../config/googleAuth');
-
-// ======================================================
-// 🔹 Upload to Google Drive (OAuth2)
-// ======================================================
-async function uploadToDrive(pdfBase64, fileName) {
-    const folderID = process.env.GOOGLE_DRIVE_POLICY_FOLDER_ID;
-
-    if (!folderID) {
-        throw new Error('GOOGLE_DRIVE_POLICY_FOLDER_ID missing in .env');
-    }
-
-    const oAuth2Client = getOAuth2Client();
-
-    const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-    const base64Data = pdfBase64.includes('base64,') ? pdfBase64.split('base64,')[1] : pdfBase64;
-    const buffer = Buffer.from(base64Data, 'base64');
-
-    const stream = new Readable();
-    stream.push(buffer);
-    stream.push(null);
-
-    const response = await drive.files.create({
-        requestBody: {
-            name: fileName,
-            parents: [folderID],
-        },
-        media: {
-            mimeType: 'application/pdf',
-            body: stream,
-        },
-        fields: 'id, webViewLink',
-    });
-
-    const fileId = response.data.id;
-    await drive.permissions.create({
-        fileId,
-        requestBody: { role: 'reader', type: 'anyone' },
-    });
-
-    return { webViewLink: response.data.webViewLink, fileId };
-}
-
-// ======================================================
-// 🔹 Update Google Drive File (OAuth2)
-// ======================================================
-async function updateInDrive(fileId, pdfBase64) {
-    const oAuth2Client = getOAuth2Client();
-
-    const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-    const base64Data = pdfBase64.includes('base64,') ? pdfBase64.split('base64,')[1] : pdfBase64;
-    const buffer = Buffer.from(base64Data, 'base64');
-
-    const stream = new Readable();
-    stream.push(buffer);
-    stream.push(null);
-
-    const response = await drive.files.update({
-        fileId,
-        media: { mimeType: 'application/pdf', body: stream },
-        fields: 'id, webViewLink',
-    });
-
-    return { webViewLink: response.data.webViewLink, fileId };
-}
-
-// ======================================================
-// 🔹 Check Google Drive File Existence
-// ======================================================
-async function checkFileExistsInDrive(fileId) {
-    try {
-        const oAuth2Client = getOAuth2Client();
-        const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-
-        const response = await drive.files.get({ fileId, fields: 'id, trashed' });
-        return !response.data.trashed;
-    } catch (err) {
-        return false;
-    }
-}
+const supabase = require('../config/supabase');
 
 // ======================================================
 // 🔹 BULK UPLOAD
@@ -101,60 +15,70 @@ router.post('/bulk-upload', protectWithFace, async (req, res) => {
         const results = [];
         for (const candidate of candidates) {
             try {
-                // Validate Base64 PDF data
-                const base64Str = candidate.pdfBase64 || '';
-                const base64Data = base64Str.includes('base64,') ? base64Str.split('base64,')[1] : base64Str;
-                const base64Regex = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-
-                if (!base64Data || !base64Regex.test(base64Data)) {
-                    results.push({
-                        candidateName: candidate.candidateName || candidate.employeeName || 'Unknown',
-                        success: false,
-                        error: 'Invalid base64 data'
-                    });
-                    continue;
-                }
-                const safeName = candidate.candidateName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
-                const fileName = `${safeName}_PolicyAgreement.pdf`;
-
-                let existingAgreement = await PolicyAgreement.findOne({ candidateName: candidate.candidateName });
-
-                if (existingAgreement) {
-                    const fileExists = await checkFileExistsInDrive(existingAgreement.driveFileId);
-                    if (!fileExists) {
-                        await PolicyAgreement.findByIdAndDelete(existingAgreement._id);
-                        existingAgreement = null;
-                    }
-                }
+                let { data: existingAgreement } = await supabase
+                    .from('policy_agreements')
+                    .select('*')
+                    .eq('candidate_name', candidate.candidateName)
+                    .maybeSingle();
 
                 if (existingAgreement) {
                     const isDuplicate =
                         String(existingAgreement.stipend || '') === String(candidate.stipend || '') &&
-                        String(existingAgreement.probationSalary || '') === String(candidate.probationSalary || '') &&
-                        String(existingAgreement.postProbationSalary || '') === String(candidate.postProbationSalary || '') &&
-                        String(existingAgreement.workStartTime || '') === String(candidate.workStartTime || '') &&
-                        String(existingAgreement.workEndTime || '') === String(candidate.workEndTime || '') &&
-                        String(existingAgreement.internshipMonths || '') === String(candidate.internshipMonths || '') &&
-                        String(existingAgreement.trainingMonths || '') === String(candidate.trainingMonths || '') &&
-                        String(existingAgreement.probationMonths || '') === String(candidate.probationMonths || '') &&
-                        String(existingAgreement.postProbationMonths || '') === String(candidate.postProbationMonths || '') &&
-                        String(existingAgreement.employeeType || 'Internship') === String(candidate.employeeType || 'Internship');
+                        String(existingAgreement.probation_salary || '') === String(candidate.probationSalary || '') &&
+                        String(existingAgreement.post_probation_salary || '') === String(candidate.postProbationSalary || '') &&
+                        String(existingAgreement.work_start_time || '') === String(candidate.workStartTime || '') &&
+                        String(existingAgreement.work_end_time || '') === String(candidate.workEndTime || '') &&
+                        String(existingAgreement.internship_months || '') === String(candidate.internshipMonths || '') &&
+                        String(existingAgreement.training_months || '') === String(candidate.trainingMonths || '') &&
+                        String(existingAgreement.probation_months || '') === String(candidate.probationMonths || '') &&
+                        String(existingAgreement.post_probation_months || '') === String(candidate.postProbationMonths || '') &&
+                        String(existingAgreement.employee_type || 'Internship') === String(candidate.employeeType || 'Internship');
 
                     if (isDuplicate) {
                         results.push({ candidateName: candidate.candidateName, success: false, error: 'Agreement already exists' });
                         continue;
                     }
 
-                    const { webViewLink } = await updateInDrive(existingAgreement.driveFileId, candidate.pdfBase64);
-                    Object.assign(existingAgreement, candidate);
-                    await existingAgreement.save();
+                    const { error: updateError } = await supabase
+                        .from('policy_agreements')
+                        .update({
+                            stipend: candidate.stipend,
+                            probation_salary: candidate.probationSalary,
+                            post_probation_salary: candidate.postProbationSalary,
+                            work_start_time: candidate.workStartTime,
+                            work_end_time: candidate.workEndTime,
+                            internship_months: candidate.internshipMonths,
+                            training_months: candidate.trainingMonths,
+                            probation_months: candidate.probationMonths,
+                            post_probation_months: candidate.postProbationMonths,
+                            employee_type: candidate.employeeType || 'Internship',
+                            updated_at: new Date()
+                        })
+                        .eq('id', existingAgreement.id);
 
-                    results.push({ candidateName: candidate.candidateName, success: true, driveLink: webViewLink, message: 'Agreement updated' });
+                    if (updateError) throw updateError;
+
+                    results.push({ candidateName: candidate.candidateName, success: true, message: 'Agreement updated' });
                 } else {
-                    const { webViewLink, fileId } = await uploadToDrive(candidate.pdfBase64, fileName);
-                    const newAgreement = new PolicyAgreement({ ...candidate, driveFileId: fileId, driveLink: webViewLink });
-                    await newAgreement.save();
-                    results.push({ candidateName: candidate.candidateName, success: true, driveLink: webViewLink });
+                    const { error: insertError } = await supabase
+                        .from('policy_agreements')
+                        .insert({
+                            candidate_name: candidate.candidateName,
+                            stipend: candidate.stipend,
+                            probation_salary: candidate.probationSalary,
+                            post_probation_salary: candidate.postProbationSalary,
+                            work_start_time: candidate.workStartTime,
+                            work_end_time: candidate.workEndTime,
+                            internship_months: candidate.internshipMonths,
+                            training_months: candidate.trainingMonths,
+                            probation_months: candidate.probationMonths,
+                            post_probation_months: candidate.postProbationMonths,
+                            employee_type: candidate.employeeType || 'Internship'
+                        });
+
+                    if (insertError) throw insertError;
+
+                    results.push({ candidateName: candidate.candidateName, success: true });
                 }
             } catch (err) {
                 results.push({ candidateName: candidate.candidateName, success: false, error: err.message });
@@ -171,7 +95,7 @@ router.post('/bulk-upload', protectWithFace, async (req, res) => {
 // ======================================================
 router.post('/send-email', protectWithFace, async (req, res) => {
     try {
-        const { toEmail, candidateName, pdfBase64, customFileName, customSubject, customMailContent } = req.body;
+        const { toEmail, candidateName, pdfBase64, customFileName, customSubject, customMailContent, ccEmails } = req.body;
         if (!toEmail || !candidateName || !pdfBase64) return res.status(400).json({ message: 'Missing fields' });
 
         // Validate email format and prevent multiple emails (header/CC injection)
@@ -182,20 +106,50 @@ router.post('/send-email', protectWithFace, async (req, res) => {
 
         const base64Content = pdfBase64.includes('base64,') ? pdfBase64.split('base64,')[1] : pdfBase64;
 
+        // Build CC list
+        const ccList = [];
+        if (Array.isArray(ccEmails)) {
+            ccEmails.forEach(email => {
+                if (email && email.trim() && emailRegex.test(email.trim())) {
+                    ccList.push({ email: email.trim() });
+                }
+            });
+        }
+        if (ccList.length === 0) {
+            ccList.push({ email: 'gokulnath96880@gmail.com' });
+        }
+
         await axios.post('https://api.brevo.com/v3/smtp/email', {
-            sender: { name: 'VTAB Admin', email: process.env.EMAIL_USER },
+            sender: {
+                name: process.env.BREVO_SENDER_NAME || 'VTAB Admin',
+                email: process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER
+            },
             to: [{ email: toEmail }],
-            cc: [
-                { email: 'balamuraleee@gmail.com' },
-                { email: 'meenakumarik.vtab@gmail.com' },
-                { email: 'vigneshrajasvtab@gmail.com' }
-            ],
+            cc: ccList,
             subject: customSubject || 'Policy Agreement',
             textContent: customMailContent || `Dear ${candidateName}, Please find your policy agreement attached.`,
             attachment: [{ content: base64Content, name: customFileName || `${candidateName}_PolicyAgreement.pdf` }],
         }, {
             headers: { 'api-key': process.env.BREVO_API_KEY },
         });
+
+        // Persist CC emails dynamically
+        if (Array.isArray(ccEmails)) {
+            try {
+                await supabase.from('default_cc_emails').delete().neq('email', '');
+                if (ccEmails.length > 0) {
+                    const rows = ccEmails
+                        .map(email => email.trim())
+                        .filter(Boolean)
+                        .map(email => ({ email }));
+                    if (rows.length > 0) {
+                        await supabase.from('default_cc_emails').insert(rows);
+                    }
+                }
+            } catch (dbErr) {
+                console.error('Failed to sync default CC emails to DB:', dbErr.message);
+            }
+        }
 
         res.json({ success: true });
     } catch (err) {

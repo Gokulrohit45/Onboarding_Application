@@ -34,7 +34,6 @@ if (process.env.GOOGLE_OAUTH_TOKEN_BASE64) {
 // -----------------------------------------------------------
 
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 
 const authRoutes = require('./routes/auth');
@@ -124,19 +123,10 @@ app.get(/^(?!\/api).+/, (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 
-// Connect MongoDB and start server
-mongoose
-    .connect(process.env.MONGO_URI)
-    .then(() => {
-        console.log('MongoDB connected');
-        app.listen(process.env.PORT || 5000, () =>
-            console.log(`Server running on port ${process.env.PORT || 5000}`)
-        );
-    })
-    .catch((err) => {
-        console.error('MongoDB connection error:', err.message);
-        process.exit(1);
-    });
+// Start server directly using Supabase DB configuration
+app.listen(process.env.PORT || 5000, () =>
+    console.log(`Server running on port ${process.env.PORT || 5000} (Supabase Backend)`)
+);
 
 // Global Error Handlers for debugging
 process.on('uncaughtException', (err) => {

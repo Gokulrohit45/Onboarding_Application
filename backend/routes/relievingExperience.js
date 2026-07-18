@@ -2,93 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect, protectWithFace } = require('../middleware/authMiddleware');
 const axios = require('axios');
-const { google } = require('googleapis');
-const { Readable } = require('stream');
-const RelievingExperience = require('../models/RelievingExperience');
-const fs = require('fs');
-const path = require('path');
-
-// ✅ Load OAuth2 Credentials & Token
-const { getOAuth2Client } = require('../config/googleAuth');
-
-// ======================================================
-// 🔹 Upload to Google Drive (OAuth2)
-// ======================================================
-async function uploadToDrive(pdfBase64, fileName) {
-    const folderID = process.env.GOOGLE_DRIVE_RELIEVING_FOLDER_ID;
-
-    if (!folderID) {
-        throw new Error('GOOGLE_DRIVE_RELIEVING_FOLDER_ID missing in .env');
-    }
-
-    const oAuth2Client = getOAuth2Client();
-
-    const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-    const base64Data = pdfBase64.includes('base64,') ? pdfBase64.split('base64,')[1] : pdfBase64;
-    const buffer = Buffer.from(base64Data, 'base64');
-
-    const stream = new Readable();
-    stream.push(buffer);
-    stream.push(null);
-
-    const response = await drive.files.create({
-        requestBody: {
-            name: fileName,
-            parents: [folderID],
-        },
-        media: {
-            mimeType: 'application/pdf',
-            body: stream,
-        },
-        fields: 'id, webViewLink',
-    });
-
-    const fileId = response.data.id;
-    await drive.permissions.create({
-        fileId,
-        requestBody: { role: 'reader', type: 'anyone' },
-    });
-
-    return { webViewLink: response.data.webViewLink, fileId };
-}
-
-// ======================================================
-// 🔹 Update Google Drive File (OAuth2)
-// ======================================================
-async function updateInDrive(fileId, pdfBase64) {
-    const oAuth2Client = getOAuth2Client();
-
-    const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-    const base64Data = pdfBase64.includes('base64,') ? pdfBase64.split('base64,')[1] : pdfBase64;
-    const buffer = Buffer.from(base64Data, 'base64');
-
-    const stream = new Readable();
-    stream.push(buffer);
-    stream.push(null);
-
-    const response = await drive.files.update({
-        fileId,
-        media: { mimeType: 'application/pdf', body: stream },
-        fields: 'id, webViewLink',
-    });
-
-    return { webViewLink: response.data.webViewLink, fileId };
-}
-
-// ======================================================
-// 🔹 Check Google Drive File Existence
-// ======================================================
-async function checkFileExistsInDrive(fileId) {
-    try {
-        const oAuth2Client = getOAuth2Client();
-        const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-
-        const response = await drive.files.get({ fileId, fields: 'id, trashed' });
-        return !response.data.trashed;
-    } catch (err) {
-        return false;
-    }
-}
+const supabase = require('../config/supabase');
 
 // ======================================================
 // 🔹 BULK UPLOAD
@@ -104,45 +18,21 @@ router.post('/bulk-upload', protectWithFace, async (req, res) => {
 
         for (const candidate of candidates) {
             try {
-                // Validate Base64 PDF data
-                const base64Str = candidate.pdfBase64 || '';
-                const base64Data = base64Str.includes('base64,') ? base64Str.split('base64,')[1] : base64Str;
-                const base64Regex = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-
-                if (!base64Data || !base64Regex.test(base64Data)) {
-                    results.push({
-                        candidateName: candidate.candidateName || candidate.employeeName || 'Unknown',
-                        success: false,
-                        error: 'Invalid base64 data'
-                    });
-                    continue;
-                }
-                const safeName = candidate.employeeName
-                    .replace(/\s+/g, '_')
-                    .replace(/[^a-zA-Z0-9_]/g, '');
-
-                const fileName = `${safeName}_RelievingExperience.pdf`;
-
-                let existingRecord = await RelievingExperience.findOne({ employeeName: candidate.employeeName });
-
-                // If record exists but file is deleted from Drive → remove DB record
-                if (existingRecord) {
-                    const fileExists = await checkFileExistsInDrive(existingRecord.driveFileId);
-                    if (!fileExists) {
-                        await RelievingExperience.findByIdAndDelete(existingRecord._id);
-                        existingRecord = null;
-                    }
-                }
+                let { data: existingRecord } = await supabase
+                    .from('relieving_experiences')
+                    .select('*')
+                    .eq('employee_name', candidate.employeeName)
+                    .maybeSingle();
 
                 if (existingRecord) {
                     // Compare key fields – if identical, skip
                     const isDuplicate =
-                        existingRecord.employeeId === candidate.employeeId &&
-                        existingRecord.jobTitle === candidate.jobTitle &&
-                        existingRecord.businessTitle === candidate.businessTitle &&
-                        existingRecord.joinedDate === candidate.joinedDate &&
-                        existingRecord.relievingDate === candidate.relievingDate &&
-                        existingRecord.issueDate === candidate.issueDate;
+                        existingRecord.employee_id === candidate.employeeId &&
+                        existingRecord.job_title === candidate.jobTitle &&
+                        existingRecord.business_title === candidate.businessTitle &&
+                        existingRecord.joined_date === candidate.joinedDate &&
+                        existingRecord.relieving_date === candidate.relievingDate &&
+                        existingRecord.issue_date === candidate.issueDate;
 
                     if (isDuplicate) {
                         results.push({
@@ -153,45 +43,44 @@ router.post('/bulk-upload', protectWithFace, async (req, res) => {
                         continue;
                     }
 
-                    // Data changed – update Drive file and DB record
-                    const { webViewLink } = await updateInDrive(existingRecord.driveFileId, candidate.pdfBase64);
+                    const { error: updateError } = await supabase
+                        .from('relieving_experiences')
+                        .update({
+                            employee_id: candidate.employeeId,
+                            job_title: candidate.jobTitle,
+                            business_title: candidate.businessTitle,
+                            issue_date: candidate.issueDate,
+                            joined_date: candidate.joinedDate,
+                            relieving_date: candidate.relievingDate,
+                            updated_at: new Date()
+                        })
+                        .eq('id', existingRecord.id);
 
-                    existingRecord.employeeId = candidate.employeeId;
-                    existingRecord.jobTitle = candidate.jobTitle;
-                    existingRecord.businessTitle = candidate.businessTitle;
-                    existingRecord.issueDate = candidate.issueDate;
-                    existingRecord.joinedDate = candidate.joinedDate;
-                    existingRecord.relievingDate = candidate.relievingDate;
-                    existingRecord.driveLink = webViewLink;
-                    await existingRecord.save();
+                    if (updateError) throw updateError;
 
                     results.push({
                         candidateName: candidate.employeeName,
                         success: true,
-                        driveLink: webViewLink,
                         message: 'Relieving letter updated',
                     });
                 } else {
-                    // New record – upload to Drive and save to DB
-                    const { webViewLink, fileId } = await uploadToDrive(candidate.pdfBase64, fileName);
+                    const { error: insertError } = await supabase
+                        .from('relieving_experiences')
+                        .insert({
+                            employee_name: candidate.employeeName,
+                            employee_id: candidate.employeeId,
+                            job_title: candidate.jobTitle,
+                            business_title: candidate.businessTitle,
+                            issue_date: candidate.issueDate,
+                            joined_date: candidate.joinedDate,
+                            relieving_date: candidate.relievingDate
+                        });
 
-                    const newRecord = new RelievingExperience({
-                        employeeName: candidate.employeeName,
-                        employeeId: candidate.employeeId,
-                        jobTitle: candidate.jobTitle,
-                        businessTitle: candidate.businessTitle,
-                        issueDate: candidate.issueDate,
-                        joinedDate: candidate.joinedDate,
-                        relievingDate: candidate.relievingDate,
-                        driveFileId: fileId,
-                        driveLink: webViewLink,
-                    });
-                    await newRecord.save();
+                    if (insertError) throw insertError;
 
                     results.push({
                         candidateName: candidate.employeeName,
                         success: true,
-                        driveLink: webViewLink,
                     });
                 }
             } catch (err) {
@@ -214,7 +103,7 @@ router.post('/bulk-upload', protectWithFace, async (req, res) => {
 // ======================================================
 router.post('/send-email', protectWithFace, async (req, res) => {
     try {
-        const { toEmail, candidateName, pdfBase64, customFileName, customSubject, customMailContent } = req.body;
+        const { toEmail, candidateName, pdfBase64, customFileName, customSubject, customMailContent, ccEmails } = req.body;
         if (!toEmail || !candidateName || !pdfBase64) {
             return res.status(400).json({ message: 'Missing fields' });
         }
@@ -227,16 +116,28 @@ router.post('/send-email', protectWithFace, async (req, res) => {
 
         const base64Content = pdfBase64.includes('base64,') ? pdfBase64.split('base64,')[1] : pdfBase64;
 
+        // Build CC list
+        const ccList = [];
+        if (Array.isArray(ccEmails)) {
+            ccEmails.forEach(email => {
+                if (email && email.trim() && emailRegex.test(email.trim())) {
+                    ccList.push({ email: email.trim() });
+                }
+            });
+        }
+        if (ccList.length === 0) {
+            ccList.push({ email: 'gokulnath96880@gmail.com' });
+        }
+
         await axios.post(
             'https://api.brevo.com/v3/smtp/email',
             {
-                sender: { name: 'VTAB Admin', email: process.env.EMAIL_USER },
+                sender: {
+                    name: process.env.BREVO_SENDER_NAME || 'VTAB Admin',
+                    email: process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER
+                },
                 to: [{ email: toEmail }],
-                cc: [
-                    { email: 'balamuraleee@gmail.com' },
-                    { email: 'meenakumarik.vtab@gmail.com' },
-                    { email: 'vigneshrajasvtab@gmail.com' }
-                ],
+                cc: ccList,
                 subject: customSubject || `Relieving & Experience Letter – ${candidateName}`,
                 textContent: customMailContent || `Dear ${candidateName}, Please find your Relieving & Experience letter attached.`,
                 attachment: [
@@ -250,6 +151,24 @@ router.post('/send-email', protectWithFace, async (req, res) => {
                 headers: { 'api-key': process.env.BREVO_API_KEY },
             }
         );
+
+        // Persist CC emails dynamically
+        if (Array.isArray(ccEmails)) {
+            try {
+                await supabase.from('default_cc_emails').delete().neq('email', '');
+                if (ccEmails.length > 0) {
+                    const rows = ccEmails
+                        .map(email => email.trim())
+                        .filter(Boolean)
+                        .map(email => ({ email }));
+                    if (rows.length > 0) {
+                        await supabase.from('default_cc_emails').insert(rows);
+                    }
+                }
+            } catch (dbErr) {
+                console.error('Failed to sync default CC emails to DB:', dbErr.message);
+            }
+        }
 
         res.json({ success: true });
     } catch (err) {

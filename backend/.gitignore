@@ -12,3 +12,4 @@ yarn-error.log*
 oauth2-credentials.json
 config/token.json
 render_env_vars.txt
+latest-token-b64.txt

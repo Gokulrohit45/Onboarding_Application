@@ -38,8 +38,26 @@ const RelievingExperienceEditor = () => {
 
     const [showMailModal, setShowMailModal] = useState(false);
     const [recipientEmail, setRecipientEmail] = useState('');
+    const [ccEmails, setCcEmails] = useState([]);
     const [isSending, setIsSending] = useState(false);
     const [mailStatus, setMailStatus] = useState({ type: '', message: '' });
+
+    // Fetch default CC emails when mail modal opens
+    useEffect(() => {
+        if (showMailModal) {
+            const fetchCc = async () => {
+                try {
+                    const res = await API.get('/otp/default-cc');
+                    if (res.data.success && Array.isArray(res.data.emails)) {
+                        setCcEmails(res.data.emails);
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch default CC:', err);
+                }
+            };
+            fetchCc();
+        }
+    }, [showMailModal]);
     const [coverLetter, setCoverLetter] = useState('');
     const [selectedMailItem, setSelectedMailItem] = useState(null);
 
@@ -391,6 +409,8 @@ VTAB Square Pvt Ltd
                 role = selectedMailItem.businessTitle || selectedMailItem.jobTitle || 'Data Analyst';
             } else {
                 pdfDataUri = await generatePDFBlob();
+                const domEmployeeName = document.getElementById('pdf-candidate-name')?.innerText;
+                if (domEmployeeName && domEmployeeName !== '[Name]') employeeName = domEmployeeName.trim();
             }
 
             if (!pdfDataUri) throw new Error('Failed to generate PDF');
@@ -416,10 +436,11 @@ VTAB Square Pvt Ltd
 
             const response = await API.post('/relieving/send-email', {
                 toEmail: recipientEmail,
+                ccEmails: ccEmails,
                 candidateName: employeeName,
                 customSubject: `Relieving & Experience Letter – ${employeeName}`,
                 customFileName: `Relieving_&_Experience_Letter_${employeeName}_${Date.now()}.pdf`,
-                customMailContent: selectedMailItem ? dynamicCoverLetter : coverLetter,
+                customMailContent: dynamicCoverLetter,
                 pdfBase64: pdfDataUri,
             });
 
@@ -429,6 +450,7 @@ VTAB Square Pvt Ltd
                     setShowMailModal(false);
                     setSelectedMailItem(null);
                     setRecipientEmail('');
+                    setCcEmails([]);
                     setMailStatus({ type: '', message: '' });
                 }, 2000);
             }
@@ -740,7 +762,7 @@ VTAB Square Pvt Ltd
                                         contentEditable={isEditable}
                                         suppressContentEditableWarning={true}
                                     >
-                                        <p className="font-bold text-lg">Dear Mr.{formData.toName || '[Name]'},</p>
+                                        <p className="font-bold text-lg">Dear Mr.<span id="pdf-candidate-name">{formData.toName || '[Name]'}</span>,</p>
                                         <p className="text-lg">Employee ID: {formData.employeeId || '[ID]'}</p>
                                     </div>
 
@@ -1040,7 +1062,7 @@ VTAB Square Pvt Ltd
                         {/* Modal Header */}
                         <div className="bg-indigo-600 px-8 py-8 text-white relative">
                             <button
-                                onClick={() => { setShowMailModal(false); setSelectedMailItem(null); }}
+                                onClick={() => { setShowMailModal(false); setSelectedMailItem(null); setCcEmails([]); setRecipientEmail(''); }}
                                 className="absolute right-6 top-6 text-white/50 hover:text-white transition-colors"
                             >
                                 <X className="w-5 h-5" />
@@ -1074,6 +1096,62 @@ VTAB Square Pvt Ltd
                                         value={recipientEmail}
                                         onChange={(e) => setRecipientEmail(e.target.value)}
                                     />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-widest mb-3 ml-1">CC Email Addresses</label>
+                                <div className="flex flex-wrap gap-2 mb-3 p-3 bg-[#EEF2FF] rounded-2xl min-h-[50px] items-center">
+                                    {ccEmails.map((email, i) => (
+                                        <div key={i} className="flex items-center gap-1 bg-white border border-indigo-100 text-indigo-700 text-xs font-semibold px-3 py-1.5 rounded-xl shadow-sm animate-in zoom-in-95 duration-150">
+                                            <span>{email}</span>
+                                            <button type="button" onClick={() => setCcEmails(ccEmails.filter((_, idx) => idx !== i))} className="hover:text-indigo-900 font-bold ml-1">×</button>
+                                        </div>
+                                    ))}
+                                    {ccEmails.length === 0 && <span className="text-indigo-300 text-xs p-1.5 font-medium italic">No CC emails added</span>}
+                                </div>
+                                <div className="relative flex gap-2">
+                                    <div className="relative flex-1">
+                                        <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none text-indigo-400">
+                                            <Mail className="w-4 h-4" />
+                                        </div>
+                                        <input
+                                            type="email"
+                                            id="cc-input-relieving"
+                                            className="w-full bg-[#EEF2FF] border-none rounded-2xl py-4 pl-12 pr-4 text-slate-800 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all placeholder:text-indigo-300 font-medium"
+                                            placeholder="Add CC email..."
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    const val = e.target.value.trim();
+                                                    if (val && !ccEmails.includes(val)) {
+                                                        const emailRegex = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+                                                        if (emailRegex.test(val)) {
+                                                            setCcEmails([...ccEmails, val]);
+                                                            e.target.value = '';
+                                                        }
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const input = document.getElementById('cc-input-relieving');
+                                            const val = input?.value.trim();
+                                            if (val && !ccEmails.includes(val)) {
+                                                const emailRegex = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+                                                if (emailRegex.test(val)) {
+                                                    setCcEmails([...ccEmails, val]);
+                                                    input.value = '';
+                                                }
+                                            }
+                                        }}
+                                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-4 rounded-2xl text-xs transition-colors border border-indigo-200"
+                                    >
+                                        Add
+                                    </button>
                                 </div>
                             </div>
 

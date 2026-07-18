@@ -2,107 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect, protectWithFace } = require('../middleware/authMiddleware');
 const axios = require('axios');
-const { google } = require('googleapis');
-const { Readable } = require('stream');
-const Offer = require('../models/Offer');
-const fs = require('fs');
-const { getOAuth2Client } = require('../config/googleAuth');
-
-// ======================================================
-// 🔹 Upload to Google Drive (OAuth2)
-// ======================================================
-async function uploadToDrive(pdfBase64, fileName) {
-    const folderID = process.env.GOOGLE_DRIVE_FOLDER_ID;
-
-    if (!folderID) {
-        throw new Error('GOOGLE_DRIVE_FOLDER_ID missing');
-    }
-
-    const oAuth2Client = getOAuth2Client();
-    const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-    //convert base64 to pdf
-    const base64Data = pdfBase64.includes('base64,')
-        ? pdfBase64.split('base64,')[1]
-        : pdfBase64;
-
-    const buffer = Buffer.from(base64Data, 'base64');
-
-    const stream = new Readable();
-    stream.push(buffer);
-    stream.push(null);
-
-    const response = await drive.files.create({
-        requestBody: {
-            name: fileName,
-            parents: [folderID],
-        },
-        media: {
-            mimeType: 'application/pdf',
-            body: stream,
-        },
-        fields: 'id, webViewLink',
-    });
-
-    const fileId = response.data.id;
-
-    // ✅ Make file public
-    await drive.permissions.create({
-        fileId,
-        requestBody: {
-            role: 'reader',
-            type: 'anyone',
-        },
-    });
-
-    return { webViewLink: response.data.webViewLink, fileId };
-}
-
-// ======================================================
-// 🔹 Update Google Drive File (OAuth2)
-// ======================================================
-async function updateInDrive(fileId, pdfBase64) {
-    const oAuth2Client = getOAuth2Client();
-    const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-
-    const base64Data = pdfBase64.includes('base64,')
-        ? pdfBase64.split('base64,')[1]
-        : pdfBase64;
-
-    const buffer = Buffer.from(base64Data, 'base64');
-    const stream = new Readable();
-    stream.push(buffer);
-    stream.push(null);
-
-    const response = await drive.files.update({
-        fileId,
-        media: {
-            mimeType: 'application/pdf',
-            body: stream,
-        },
-        fields: 'id, webViewLink',
-    });
-
-    return { webViewLink: response.data.webViewLink, fileId };
-}
-
-// ======================================================
-// 🔹 Check Google Drive File Existence
-// ======================================================
-async function checkFileExistsInDrive(fileId) {
-    try {
-        const oAuth2Client = getOAuth2Client();
-        const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-
-        const response = await drive.files.get({
-            fileId,
-            fields: 'id, trashed'
-        });
-        if (response.data.trashed) return false;
-        return true;
-    } catch (err) {
-        return false; // File doesn't exist, is trashed, or we don't have access
-    }
-}
+const supabase = require('../config/supabase');
 
 // ======================================================
 // 🔹 SAVE OFFER
@@ -116,7 +16,7 @@ router.post('/save', protectWithFace, async (req, res) => {
 // ======================================================
 router.post('/send-email', protectWithFace, async (req, res) => {
     try {
-        const { toEmail, candidateName, pdfBase64, customFileName, customSubject, customMailContent } = req.body;
+        const { toEmail, candidateName, pdfBase64, customFileName, customSubject, customMailContent, ccEmails } = req.body;
 
         if (!toEmail || !candidateName || !pdfBase64) {
             return res.status(400).json({ message: 'Missing fields' });
@@ -132,19 +32,28 @@ router.post('/send-email', protectWithFace, async (req, res) => {
             ? pdfBase64.split('base64,')[1]
             : pdfBase64;
 
+        // Build CC list
+        const ccList = [];
+        if (Array.isArray(ccEmails)) {
+            ccEmails.forEach(email => {
+                if (email && email.trim() && emailRegex.test(email.trim())) {
+                    ccList.push({ email: email.trim() });
+                }
+            });
+        }
+        if (ccList.length === 0) {
+            ccList.push({ email: 'gokulnath96880@gmail.com' });
+        }
+
         await axios.post(
             'https://api.brevo.com/v3/smtp/email',
             {
                 sender: {
-                    name: 'VTAB Admin',
-                    email: process.env.EMAIL_USER,
+                    name: process.env.BREVO_SENDER_NAME || 'VTAB Admin',
+                    email: process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER,
                 },
                 to: [{ email: toEmail }],
-                cc: [
-                    { email: 'balamuraleee@gmail.com' },
-                    { email: 'meenakumarik.vtab@gmail.com' },
-                    { email: 'vigneshrajasvtab@gmail.com' }
-                ],
+                cc: ccList,
                 subject: customSubject || 'Offer Letter',
                 textContent: customMailContent || `Dear ${candidateName}, Please find your offer letter.`,
                 attachment: [
@@ -160,6 +69,24 @@ router.post('/send-email', protectWithFace, async (req, res) => {
                 },
             }
         );
+
+        // Persist CC emails dynamically
+        if (Array.isArray(ccEmails)) {
+            try {
+                await supabase.from('default_cc_emails').delete().neq('email', '');
+                if (ccEmails.length > 0) {
+                    const rows = ccEmails
+                        .map(email => email.trim())
+                        .filter(Boolean)
+                        .map(email => ({ email }));
+                    if (rows.length > 0) {
+                        await supabase.from('default_cc_emails').insert(rows);
+                    }
+                }
+            } catch (dbErr) {
+                console.error('Failed to sync default CC emails to DB:', dbErr.message);
+            }
+        }
 
         res.json({ success: true });
     } catch (err) {
@@ -182,50 +109,27 @@ router.post('/bulk-upload', protectWithFace, async (req, res) => {
 
         for (const candidate of candidates) {
             try {
-                // Validate Base64 PDF data
-                const base64Str = candidate.pdfBase64 || '';
-                const base64Data = base64Str.includes('base64,') ? base64Str.split('base64,')[1] : base64Str;
-                const base64Regex = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-
-                if (!base64Data || !base64Regex.test(base64Data)) {
-                    results.push({
-                        candidateName: candidate.candidateName || candidate.employeeName || 'Unknown',
-                        success: false,
-                        error: 'Invalid base64 data'
-                    });
-                    continue;
-                }
-                const safeName = candidate.candidateName
-                    .replace(/\s+/g, '_')
-                    .replace(/[^a-zA-Z0-9_]/g, '');
-
-                const fileName = `${safeName}_OFFER_LETTER.pdf`;
-
-                let existingOffer = await Offer.findOne({ candidateName: candidate.candidateName });
-
-                if (existingOffer) {
-                    const fileExists = await checkFileExistsInDrive(existingOffer.driveFileId);
-                    if (!fileExists) {
-                        await Offer.findByIdAndDelete(existingOffer._id);
-                        existingOffer = null; // Triggers new upload
-                    }
-                }
+                let { data: existingOffer } = await supabase
+                    .from('offers')
+                    .select('*')
+                    .eq('candidate_name', candidate.candidateName)
+                    .maybeSingle();
 
                 if (existingOffer) {
                     // Compare fields
                     const isDuplicate =
-                        existingOffer.doorNo === candidate.doorNo &&
+                        existingOffer.door_no === candidate.doorNo &&
                         existingOffer.street === candidate.street &&
-                        existingOffer.addressLine1 === candidate.addressLine1 &&
-                        existingOffer.addressLine2 === candidate.addressLine2 &&
+                        existingOffer.address_line1 === candidate.addressLine1 &&
+                        existingOffer.address_line2 === candidate.addressLine2 &&
                         existingOffer.district === candidate.district &&
                         existingOffer.state === candidate.state &&
                         existingOffer.pincode === candidate.pincode &&
                         existingOffer.designation === candidate.designation &&
-                        existingOffer.joiningDate === candidate.joiningDate &&
-                        existingOffer.reportingManager === candidate.reportingManager &&
+                        existingOffer.joining_date === candidate.joiningDate &&
+                        existingOffer.reporting_manager === candidate.reportingManager &&
                         existingOffer.location === candidate.location &&
-                        existingOffer.offerDate === candidate.date;
+                        existingOffer.offer_date === candidate.date;
 
                     if (isDuplicate) {
                         results.push({
@@ -233,61 +137,60 @@ router.post('/bulk-upload', protectWithFace, async (req, res) => {
                             success: false,
                             error: 'Offer letter already exists',
                         });
-                        continue; // Skip next steps for this candidate
+                        continue;
                     }
 
-                    // Fields differ, update in Drive and DB
-                    const { webViewLink } = await updateInDrive(existingOffer.driveFileId, candidate.pdfBase64);
+                    // Fields differ -> update DB
+                    const { error: updateError } = await supabase
+                        .from('offers')
+                        .update({
+                            door_no: candidate.doorNo,
+                            street: candidate.street,
+                            address_line1: candidate.addressLine1,
+                            address_line2: candidate.addressLine2,
+                            district: candidate.district,
+                            state: candidate.state,
+                            pincode: candidate.pincode,
+                            designation: candidate.designation,
+                            joining_date: candidate.joiningDate,
+                            reporting_manager: candidate.reportingManager,
+                            location: candidate.location,
+                            offer_date: candidate.date,
+                            updated_at: new Date()
+                        })
+                        .eq('id', existingOffer.id);
 
-                    existingOffer.doorNo = candidate.doorNo;
-                    existingOffer.street = candidate.street;
-                    existingOffer.addressLine1 = candidate.addressLine1;
-                    existingOffer.addressLine2 = candidate.addressLine2;
-                    existingOffer.district = candidate.district;
-                    existingOffer.state = candidate.state;
-                    existingOffer.pincode = candidate.pincode;
-                    existingOffer.designation = candidate.designation;
-                    existingOffer.joiningDate = candidate.joiningDate;
-                    existingOffer.reportingManager = candidate.reportingManager;
-                    existingOffer.location = candidate.location;
-                    existingOffer.offerDate = candidate.date;
-                    await existingOffer.save();
+                    if (updateError) throw updateError;
 
                     results.push({
                         candidateName: candidate.candidateName,
                         success: true,
-                        driveLink: webViewLink,
                         message: 'Offer letter updated',
                     });
                 } else {
-                    const { webViewLink, fileId } = await uploadToDrive(
-                        candidate.pdfBase64,
-                        fileName
-                    );
+                    const { error: insertError } = await supabase
+                        .from('offers')
+                        .insert({
+                            candidate_name: candidate.candidateName,
+                            door_no: candidate.doorNo,
+                            street: candidate.street,
+                            address_line1: candidate.addressLine1,
+                            address_line2: candidate.addressLine2,
+                            district: candidate.district,
+                            state: candidate.state,
+                            pincode: candidate.pincode,
+                            designation: candidate.designation,
+                            joining_date: candidate.joiningDate,
+                            reporting_manager: candidate.reportingManager,
+                            location: candidate.location,
+                            offer_date: candidate.date,
+                        });
 
-                    const newOffer = new Offer({
-                        candidateName: candidate.candidateName,
-                        doorNo: candidate.doorNo,
-                        street: candidate.street,
-                        addressLine1: candidate.addressLine1,
-                        addressLine2: candidate.addressLine2,
-                        district: candidate.district,
-                        state: candidate.state,
-                        pincode: candidate.pincode,
-                        designation: candidate.designation,
-                        joiningDate: candidate.joiningDate,
-                        reportingManager: candidate.reportingManager,
-                        location: candidate.location,
-                        offerDate: candidate.date,
-                        driveFileId: fileId,
-                        driveLink: webViewLink,
-                    });
-                    await newOffer.save();
+                    if (insertError) throw insertError;
 
                     results.push({
                         candidateName: candidate.candidateName,
                         success: true,
-                        driveLink: webViewLink,
                     });
                 }
             } catch (err) {

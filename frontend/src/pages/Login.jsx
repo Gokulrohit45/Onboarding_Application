@@ -35,10 +35,12 @@ export default function Login() {
                     // Redirect to password reset page with the temporary token
                     localStorage.setItem("resetToken", res.data.token);
                     navigate("/user/reset-password");
-                } else if (res.data.faceMatchRequired) {
-                    // Redirect to face match page with the verification token
-                    localStorage.setItem("faceMatchToken", res.data.token);
-                    navigate("/user/face-match");
+                } else {
+                    // Bypass face-match and redirect directly to editor dashboard!
+                    localStorage.setItem("token", res.data.token);
+                    localStorage.setItem("userToken", res.data.token);
+                    localStorage.setItem("role", "user");
+                    navigate("/editor");
                 }
             }
         } catch (err) {
@@ -134,19 +136,12 @@ export default function Login() {
                                     Authenticating...
                                 </>
                             ) : (
-                                "Continue to Verification"
+                                "Sign In"
                             )}
                         </button>
                     </form>
 
-                    <div className="mt-6 text-center border-t border-gray-100 pt-6">
-                        <button 
-                            onClick={() => navigate('/admin/login')}
-                            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors"
-                        >
-                            Are you an Admin? Sign in here
-                        </button>
-                    </div>
+
 
                     <p className="mt-8 text-center text-xs text-gray-400 font-medium">
                         New user? Check your email for login instructions.

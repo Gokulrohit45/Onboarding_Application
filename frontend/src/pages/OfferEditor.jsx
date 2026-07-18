@@ -40,8 +40,26 @@ const OfferEditor = () => {
     });
     const [showMailModal, setShowMailModal] = useState(false);
     const [recipientEmail, setRecipientEmail] = useState('');
+    const [ccEmails, setCcEmails] = useState([]);
     const [isSending, setIsSending] = useState(false);
     const [mailStatus, setMailStatus] = useState({ type: '', message: '' });
+
+    // Fetch default CC emails when mail modal opens
+    useEffect(() => {
+        if (showMailModal) {
+            const fetchCc = async () => {
+                try {
+                    const res = await API.get('/otp/default-cc');
+                    if (res.data.success && Array.isArray(res.data.emails)) {
+                        setCcEmails(res.data.emails);
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch default CC:', err);
+                }
+            };
+            fetchCc();
+        }
+    }, [showMailModal]);
 
     // OTP State
     const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
@@ -519,6 +537,7 @@ const OfferEditor = () => {
 
             const response = await API.post('/offer/send-email', {
                 toEmail: recipientEmail,
+                ccEmails: ccEmails,
                 candidateName: candidateName,
                 joiningDate: joinedDateFormatted,
                 customFileName: `Offer_Letter_${candidateName}_${Date.now()}.pdf`,
@@ -551,6 +570,7 @@ VTAB Square Pvt Ltd (Now Part of Siroco)
                 setTimeout(() => {
                     setShowMailModal(false);
                     setRecipientEmail('');
+                    setCcEmails([]);
                     setSelectedMailItem(null);
                     setMailStatus({ type: '', message: '' });
                 }, 2000);
@@ -1249,7 +1269,7 @@ VTAB Square Pvt Ltd (Now Part of Siroco)
                         {/* Modal Header */}
                         <div className="bg-indigo-600 px-8 py-6 text-white relative">
                             <button
-                                onClick={() => setShowMailModal(false)}
+                                onClick={() => { setShowMailModal(false); setCcEmails([]); setRecipientEmail(''); setSelectedMailItem(null); }}
                                 className="absolute right-6 top-6 text-white/50 hover:text-white transition-colors p-1"
                             >
                                 <X className="w-5 h-5" />
@@ -1277,6 +1297,62 @@ VTAB Square Pvt Ltd (Now Part of Siroco)
                                         value={recipientEmail}
                                         onChange={(e) => setRecipientEmail(e.target.value)}
                                     />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">CC Email Addresses</label>
+                                <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-50 border border-slate-200 rounded-2xl min-h-[50px] items-center">
+                                    {ccEmails.map((email, i) => (
+                                        <div key={i} className="flex items-center gap-1 bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-semibold px-3 py-1.5 rounded-xl shadow-sm animate-in zoom-in-95 duration-150">
+                                            <span>{email}</span>
+                                            <button type="button" onClick={() => setCcEmails(ccEmails.filter((_, idx) => idx !== i))} className="hover:text-indigo-900 font-bold ml-1">×</button>
+                                        </div>
+                                    ))}
+                                    {ccEmails.length === 0 && <span className="text-slate-400 text-xs p-1.5 font-medium italic">No CC emails added</span>}
+                                </div>
+                                <div className="relative group flex gap-2">
+                                    <div className="relative flex-1">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-600 transition-colors">
+                                            <Mail className="w-4 h-4" />
+                                        </div>
+                                        <input
+                                            type="email"
+                                            id="cc-input-offer"
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-11 pr-4 text-slate-900 text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:outline-none transition-all"
+                                            placeholder="Add CC email..."
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    const val = e.target.value.trim();
+                                                    if (val && !ccEmails.includes(val)) {
+                                                        const emailRegex = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+                                                        if (emailRegex.test(val)) {
+                                                            setCcEmails([...ccEmails, val]);
+                                                            e.target.value = '';
+                                                        }
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const input = document.getElementById('cc-input-offer');
+                                            const val = input?.value.trim();
+                                            if (val && !ccEmails.includes(val)) {
+                                                const emailRegex = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+                                                if (emailRegex.test(val)) {
+                                                    setCcEmails([...ccEmails, val]);
+                                                    input.value = '';
+                                                }
+                                            }
+                                        }}
+                                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-4 rounded-2xl text-xs transition-colors border border-indigo-200"
+                                    >
+                                        Add
+                                    </button>
                                 </div>
                             </div>
 

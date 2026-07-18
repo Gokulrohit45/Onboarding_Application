@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const Admin = require('../models/Admin');
+const bcrypt = require('bcryptjs');
+const supabase = require('../config/supabase');
 
 // 🔥 Generate JWT
 const generateToken = (id, email, employeeId, faceVerified = false) => {
@@ -22,28 +23,32 @@ router.post('/login', async (req, res) => {
     if (!email || !password)
       return res.status(400).json({ message: 'Email and password required' });
 
-    const admin = await Admin.findOne({ email: email.toLowerCase() });
+    const { data: admin, error } = await supabase
+      .from('admins')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .maybeSingle();
 
     if (!admin)
       return res.status(401).json({ message: 'Invalid credentials' });
 
-    const isMatch = await admin.matchPassword(password);
+    const isMatch = await bcrypt.compare(password, admin.password);
 
     if (!isMatch)
       return res.status(401).json({ message: 'Invalid credentials' });
 
-    // Initial token has faceVerified: false
-    const token = generateToken(admin._id, admin.email, admin.employeeId, false);
+    // Initial token has faceVerified: true (face auth disabled)
+    const token = generateToken(admin.id, admin.email, admin.employee_id, true);
 
-    console.log(`✅ Login successful: ${admin.email} (Employee ID: ${admin.employeeId || 'N/A'})`);
+    console.log(`✅ Login successful: ${admin.email} (Employee ID: ${admin.employee_id || 'N/A'})`);
     console.log(`🔑 JWT Token: ${token}`);
 
     res.json({
       success: true,
       token,
       email: admin.email,
-      employeeId: admin.employeeId,
-      faceVerified: false
+      employeeId: admin.employee_id,
+      faceVerified: true
     });
 
   } catch (err) {
@@ -95,17 +100,39 @@ router.post('/seed', async (req, res) => {
   try {
     const targetEmail = 'techdotsanjay@gmail.com';
     const targetPassword = '12345';
-    const targetEmpId = 'EMP017';
 
     // Seed second admin
     const admin2Email = 'admin@vtabsquare.com';
     const admin2Password = '12345';
-    const existing2 = await Admin.findOne({ email: admin2Email });
+
+    // Seed first admin
+    const { data: existing1 } = await supabase
+      .from('admins')
+      .select('*')
+      .eq('email', targetEmail)
+      .maybeSingle();
+
+    if (!existing1) {
+      const hashed1 = await bcrypt.hash(targetPassword, 10);
+      await supabase.from('admins').insert({
+        email: targetEmail,
+        password: hashed1,
+        employee_id: 'EMP017'
+      });
+    }
+
+    const { data: existing2 } = await supabase
+      .from('admins')
+      .select('*')
+      .eq('email', admin2Email)
+      .maybeSingle();
+
     if (!existing2) {
-      await Admin.create({
+      const hashed2 = await bcrypt.hash(admin2Password, 10);
+      await supabase.from('admins').insert({
         email: admin2Email,
-        password: admin2Password,
-        employeeId: 'ADM001',
+        password: hashed2,
+        employee_id: 'ADM001',
       });
     }
 

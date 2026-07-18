@@ -6,8 +6,8 @@ const sendUserCredentialsEmail = async (email, tempPassword, loginUrl, verificat
             'https://api.brevo.com/v3/smtp/email',
             {
                 sender: {
-                    name: 'VTAB Onboarding',
-                    email: process.env.EMAIL_USER,
+                    name: process.env.BREVO_SENDER_NAME || 'VTAB Onboarding',
+                    email: process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER,
                 },
                 to: [{ email }],
                 subject: 'Account Created - Complete Verification',

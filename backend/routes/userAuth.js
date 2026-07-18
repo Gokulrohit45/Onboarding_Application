@@ -1,15 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const User = require('../models/User');
+const crypto = require('crypto');
+const supabase = require('../config/supabase');
 const { protect } = require('../middleware/authMiddleware');
 const { sendUserCredentialsEmail } = require('../services/emailService');
 
 // Utility to generate JWT for users
 const generateUserToken = (user, type = 'auth') => {
-    const payload = { id: user._id, email: user.email, type };
+    const payload = { id: user.id, email: user.email, type };
     if (type === 'auth') {
         payload.faceVerified = true;
     }
@@ -31,7 +31,12 @@ router.post('/admin/create-user', protect, async (req, res) => {
             return res.status(400).json({ message: 'Email ID is required.' });
         }
 
-        const existingUser = await User.findOne({ email: email.toLowerCase() });
+        const { data: existingUser } = await supabase
+            .from('users')
+            .select('id')
+            .eq('email', email.toLowerCase())
+            .maybeSingle();
+
         if (existingUser) {
             return res.status(400).json({ message: 'User already exists.' });
         }
@@ -41,22 +46,27 @@ router.post('/admin/create-user', protect, async (req, res) => {
         const userId = 'USR' + Date.now().toString().slice(-6);
         const unionNumber = Math.floor(100000 + Math.random() * 900000).toString();
 
-        const user = new User({
-            email: email.toLowerCase(),
-            tempPassword: tempPassword,
-            userId,
-            unionNumber,
-            isVerified: false,
-        });
+        const id = crypto.randomUUID();
 
         // Generate verification token
-        const verificationToken = generateUserToken(user, 'face_verification');
-        user.faceVerificationToken = verificationToken;
+        const verificationToken = generateUserToken({ id, email: email.toLowerCase() }, 'face_verification');
+        const hashedTempPassword = await bcrypt.hash(tempPassword, 10);
 
-        await user.save();
+        const { error: insertError } = await supabase
+            .from('users')
+            .insert({
+                id,
+                email: email.toLowerCase(),
+                temp_password: hashedTempPassword,
+                user_id: userId,
+                union_number: unionNumber,
+                is_verified: false,
+                face_verification_token: verificationToken
+            });
+
+        if (insertError) throw insertError;
 
         // URLs for the email
-        // Dynamically grab the frontend URL from the request origin so it perfectly matches where the admin is creating the user (local or Render).
         const originUrl = req.headers.origin;
         const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
         const fallbackUrl = isProduction 
@@ -68,15 +78,15 @@ router.post('/admin/create-user', protect, async (req, res) => {
         const verificationUrl = `${frontendUrl}/user/verify-face?token=${verificationToken}`;
 
         // Send email
-        const emailSent = await sendUserCredentialsEmail(email, tempPassword, loginUrl, verificationUrl);
+        const emailSent = await sendUserCredentialsEmail(email.toLowerCase(), tempPassword, loginUrl, verificationUrl);
 
         res.status(201).json({
             success: true,
             message: emailSent ? 'User created and email sent.' : 'User created but email failed to send.',
             user: {
-                email: user.email,
-                userId: user.userId,
-                unionNumber: user.unionNumber
+                email: email.toLowerCase(),
+                userId: userId,
+                unionNumber: unionNumber
             }
         });
 
@@ -102,19 +112,29 @@ router.post('/user/verify-face', async (req, res) => {
             return res.status(401).json({ message: 'Invalid token type.' });
         }
 
-        const user = await User.findById(decoded.id);
+        const { data: user } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', decoded.id)
+            .maybeSingle();
+
         if (!user) {
             return res.status(404).json({ message: 'User not found.' });
         }
 
         console.log(`[VERIFY-FACE] Attempting verification for User ID: ${decoded.id}`);
-        user.faceData = faceData;
-        user.isVerified = true;
-        user.markModified('faceData');
-        user.markModified('isVerified');
-        user.faceVerificationToken = null; 
+
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({
+                face_data: faceData,
+                is_verified: true,
+                face_verification_token: null
+            })
+            .eq('id', decoded.id);
+
+        if (updateError) throw updateError;
         
-        await user.save();
         console.log(`[VERIFY-FACE] ✅ Success! User ${user.email} is now verified.`);
 
         res.json({ success: true, message: 'Face data verified and stored. You can now login.' });
@@ -131,19 +151,20 @@ router.post('/user/login', async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        const user = await User.findOne({ email: email.toLowerCase() });
+        const { data: user } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email.toLowerCase())
+            .maybeSingle();
+
         if (!user) {
             return res.status(401).json({ message: 'Invalid credentials.' });
         }
 
-        if (!user.isVerified) {
-            return res.status(401).json({ message: 'Face verification incomplete.' });
-        }
-
         // Check if using temp password
-        const isTempMatch = await user.matchTempPassword(password);
+        const isTempMatch = await bcrypt.compare(password, user.temp_password);
         if (isTempMatch) {
-            if (user.isTempPasswordExpired) {
+            if (user.is_temp_password_expired) {
                 return res.status(401).json({ message: 'Temporary password expired. Please contact admin.' });
             }
             const token = generateUserToken(user, 'reset_required');
@@ -156,18 +177,17 @@ router.post('/user/login', async (req, res) => {
         }
 
         // Check regular password
-        const isMatch = await user.matchPassword(password);
+        const isMatch = user.password ? await bcrypt.compare(password, user.password) : false;
         if (!isMatch) {
             return res.status(401).json({ message: 'Invalid credentials.' });
         }
 
-        // Regular login successful -> Proceed to face match step
-        const token = generateUserToken(user, 'face_match_required');
+        // Regular login successful -> Bypass face match step
+        const token = generateUserToken(user, 'auth');
         res.json({
             success: true,
-            faceMatchRequired: true,
             token,
-            message: 'Credentials valid. Proceed to face matching.'
+            message: 'Login successful. Access granted.'
         });
 
     } catch (err) {
@@ -187,14 +207,26 @@ router.post('/user/reset-password', async (req, res) => {
             return res.status(401).json({ message: 'Invalid token.' });
         }
 
-        const user = await User.findById(decoded.id);
+        const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', decoded.id)
+            .maybeSingle();
+
         if (!user) {
             return res.status(404).json({ message: 'User not found.' });
         }
 
-        user.password = newPassword;
-        user.isTempPasswordExpired = true;
-        await user.save();
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({
+                password: hashedPassword,
+                is_temp_password_expired: true
+            })
+            .eq('id', decoded.id);
+
+        if (updateError) throw updateError;
 
         res.json({ success: true, message: 'Password updated successfully. Please login again.' });
 
@@ -215,27 +247,21 @@ router.post('/user/match-face', async (req, res) => {
             return res.status(401).json({ message: 'Invalid token.' });
         }
 
-        const user = await User.findById(decoded.id);
-        if (!user || !user.faceData) {
+        const { data: user } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', decoded.id)
+            .maybeSingle();
+
+        if (!user || !user.face_data) {
             return res.status(404).json({ message: 'User or face data not found.' });
         }
-
-        // Note: Actual face comparison should ideally happen here or in the frontend.
-        // face-api.js comparison: Euclidean distance < 0.6 usually means a match.
-        // If we want to do it here, we'd need to compute the distance.
-        // For simplicity and standard face-api usage, the frontend often does the match 
-        // using the stored descriptors fetched from backend.
-        // However, the prompt says "Compare live face with stored faceData" and "If MATCH: Redirect to Offer Page".
-        
-        // I'll return the stored faceData so the frontend can compare, 
-        // OR I can implement a simple Euclidean distance check if provided.
-        // Let's assume the frontend sends the live descriptor and we compare here.
 
         const euclideanDistance = (v1, v2) => {
             return Math.sqrt(v1.reduce((sum, val, i) => sum + Math.pow(val - v2[i], 2), 0));
         };
 
-        const distance = euclideanDistance(user.faceData, liveFaceData);
+        const distance = euclideanDistance(user.face_data, liveFaceData);
         const threshold = 0.6;
 
         if (distance < threshold) {
@@ -260,11 +286,28 @@ router.post('/user/match-face', async (req, res) => {
 // ======================================================
 router.get('/admin/users', protect, async (req, res) => {
     try {
-        console.log(`[ADMIN] DB Name: ${mongoose.connection.name}`);
-        console.log(`[ADMIN] Collection Name: ${User.collection.name}`);
-        const users = await User.find().select('-password -tempPassword -faceData');
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('id, email, user_id, union_number, is_verified, is_temp_password_expired, face_verification_token, created_at, updated_at');
+        
+        if (error) throw error;
+        
         console.log(`[ADMIN] Found ${users.length} users.`);
-        res.json(users);
+        
+        const mappedUsers = users.map(u => ({
+            _id: u.id,
+            id: u.id,
+            email: u.email,
+            userId: u.user_id,
+            unionNumber: u.union_number,
+            isVerified: u.is_verified,
+            isTempPasswordExpired: u.is_temp_password_expired,
+            faceVerificationToken: u.face_verification_token,
+            createdAt: u.created_at,
+            updatedAt: u.updated_at
+        }));
+        
+        res.json(mappedUsers);
     } catch (err) {
         console.error('[ADMIN] Error fetching users:', err);
         res.status(500).json({ message: 'Server error' });

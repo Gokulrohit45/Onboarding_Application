@@ -119,7 +119,10 @@ app.get('/api/health', (req, res) => {
 });
 
 // Catch-all route for frontend
-app.get(/^(?!\/api).+/, (req, res) => {
+app.get('*', (req, res) => {
+    if (req.path.startsWith('/api')) {
+        return res.status(404).json({ error: 'API route not found' });
+    }
     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 

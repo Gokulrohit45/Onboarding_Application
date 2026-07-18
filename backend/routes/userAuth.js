@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const supabase = require('../config/supabase');
 const { protect } = require('../middleware/authMiddleware');
-const { sendUserCredentialsEmail } = require('../services/emailService');
+const { sendUserCredentialsEmail, sendResetPasswordOtpEmail } = require('../services/emailService');
 
 // Utility to generate JWT for users
 const generateUserToken = (user, type = 'auth') => {
@@ -311,6 +311,116 @@ router.get('/admin/users', protect, async (req, res) => {
     } catch (err) {
         console.error('[ADMIN] Error fetching users:', err);
         res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// ======================================================
+// 🔹 USER: REQUEST PASSWORD RESET (FORGOT PASSWORD)
+// ======================================================
+router.post('/user/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ message: 'Email address is required.' });
+        }
+
+        // Check if user exists in the users table
+        const { data: user, error: userError } = await supabase
+            .from('users')
+            .select('id, email')
+            .eq('email', email.toLowerCase())
+            .maybeSingle();
+
+        if (userError) throw userError;
+
+        if (!user) {
+            return res.status(404).json({ message: 'No candidate account found with this email address.' });
+        }
+
+        // Generate a 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Delete any existing reset OTPs for this email
+        await supabase
+            .from('user_password_resets')
+            .delete()
+            .eq('email', email.toLowerCase());
+
+        // Save the new OTP
+        const { error: insertError } = await supabase
+            .from('user_password_resets')
+            .insert({ email: email.toLowerCase(), otp });
+
+        if (insertError) throw insertError;
+
+        // Send OTP via Brevo
+        const emailSent = await sendResetPasswordOtpEmail(email.toLowerCase(), otp);
+
+        if (!emailSent) {
+            return res.status(500).json({ message: 'Failed to send OTP email. Please try again.' });
+        }
+
+        res.json({ success: true, message: 'Password reset OTP sent to your email.' });
+    } catch (err) {
+        console.error('Forgot password error:', err.message);
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+});
+
+// ======================================================
+// 🔹 USER: VERIFY OTP AND RESET PASSWORD
+// ======================================================
+router.post('/user/forgot-password-verify', async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+
+        if (!email || !otp || !newPassword) {
+            return res.status(400).json({ message: 'All fields (email, OTP, new password) are required.' });
+        }
+
+        // Find the OTP entry
+        const { data: entry, error: findError } = await supabase
+            .from('user_password_resets')
+            .select('*')
+            .eq('email', email.toLowerCase())
+            .eq('otp', otp)
+            .maybeSingle();
+
+        if (findError) throw findError;
+
+        if (!entry) {
+            return res.status(400).json({ message: 'Invalid or expired OTP.' });
+        }
+
+        // Validate 15 minute expiry (15 * 60 * 1000 = 900,000 ms)
+        const ageInMs = Date.now() - new Date(entry.created_at).getTime();
+        if (ageInMs > 15 * 60 * 1000) {
+            await supabase.from('user_password_resets').delete().eq('id', entry.id);
+            return res.status(400).json({ message: 'Invalid or expired OTP.' });
+        }
+
+        // OTP is valid - delete it so it can't be reused
+        await supabase.from('user_password_resets').delete().eq('id', entry.id);
+
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update the user's password and expire temp password
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({
+                password: hashedPassword,
+                is_temp_password_expired: true
+            })
+            .eq('email', email.toLowerCase());
+
+        if (updateError) throw updateError;
+
+        res.json({ success: true, message: 'Password reset successful. Please login with your new password.' });
+    } catch (err) {
+        console.error('Verify forgot password error:', err.message);
+        res.status(500).json({ message: 'Server error', error: err.message });
     }
 });
 

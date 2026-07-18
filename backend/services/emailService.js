@@ -46,4 +46,47 @@ const sendUserCredentialsEmail = async (email, tempPassword, loginUrl, verificat
     }
 };
 
-module.exports = { sendUserCredentialsEmail };
+const sendResetPasswordOtpEmail = async (email, otp) => {
+    try {
+        await axios.post(
+            'https://api.brevo.com/v3/smtp/email',
+            {
+                sender: {
+                    name: process.env.BREVO_SENDER_NAME || 'VTAB Onboarding',
+                    email: process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER,
+                },
+                to: [{ email }],
+                subject: '🔐 Password Reset OTP - VTAB Onboarding',
+                htmlContent: `
+                    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #f8fafc; border-radius: 12px;">
+                        <div style="text-align: center; margin-bottom: 24px;">
+                            <h2 style="color: #1e293b; margin: 0 0 8px;">VTAB Onboarding</h2>
+                            <p style="color: #64748b; margin: 0; font-size: 14px;">Password Reset Verification Code</p>
+                        </div>
+                        <div style="background: #ffffff; border-radius: 12px; padding: 24px; border: 1px solid #e2e8f0; text-align: center;">
+                            <p style="color: #374151; font-size: 15px; margin: 0 0 16px;">Your password reset verification code (OTP) is:</p>
+                            <div style="background: linear-gradient(135deg, #ef4444, #f43f5e); border-radius: 12px; padding: 20px; margin: 0 auto; max-width: 240px;">
+                                <span style="color: white; font-size: 36px; font-weight: bold; letter-spacing: 12px;">${otp}</span>
+                            </div>
+                            <p style="color: #94a3b8; font-size: 13px; margin: 16px 0 0;">This OTP is valid for <strong>15 minutes</strong>.</p>
+                        </div>
+                        <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 16px;">
+                            If you did not request a password reset, please ignore this email.
+                        </p>
+                    </div>
+                `,
+            },
+            {
+                headers: {
+                    'api-key': process.env.BREVO_API_KEY,
+                },
+            }
+        );
+        return true;
+    } catch (err) {
+        console.error('Reset password email error:', err.response?.data || err.message);
+        return false;
+    }
+};
+
+module.exports = { sendUserCredentialsEmail, sendResetPasswordOtpEmail };

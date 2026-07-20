@@ -493,8 +493,8 @@ VTAB Square Pvt Ltd (Now Part of Siroco)
             } else {
                 if (!validateForm()) return;
                 pdfDataUri = await generatePDFBlob();
-                const domCandidateName = document.getElementById('pdf-candidate-name')?.innerText;
-                if (domCandidateName && domCandidateName !== 'SANJAY S') candidateName = domCandidateName.trim();
+                const domCandidateName = document.getElementById('pdf-candidate-name')?.innerText?.replace(/[\[\]]/g, '').trim();
+                if (domCandidateName && domCandidateName !== 'SANJAY S') candidateName = domCandidateName;
             }
 
             if (!pdfDataUri) throw new Error('Failed to generate PDF');

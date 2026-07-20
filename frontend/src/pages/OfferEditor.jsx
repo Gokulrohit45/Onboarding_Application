@@ -492,23 +492,23 @@ const OfferEditor = () => {
             pdfDataUri = await generatePDFBlob();
 
             // Extract DOM values written manually by user in editable mode
-            const domCandidateName = document.getElementById('pdf-candidate-name')?.innerText;
-            if (domCandidateName && domCandidateName !== '[Candidate Name]') candidateName = domCandidateName.trim();
+            const domCandidateName = document.getElementById('pdf-candidate-name')?.innerText?.replace(/[\[\]]/g, '').trim();
+            if (domCandidateName && domCandidateName !== 'Candidate Name') candidateName = domCandidateName;
 
-            const domDesignation = document.getElementById('pdf-designation')?.innerText;
-            if (domDesignation) mailDesignation = domDesignation.trim();
+            const domDesignation = document.getElementById('pdf-designation')?.innerText?.replace(/[\[\]]/g, '').trim();
+            if (domDesignation) mailDesignation = domDesignation;
 
-            const domManager = document.getElementById('pdf-manager')?.innerText;
-            if (domManager && domManager !== '[Manager Name]') mailReportingManager = domManager.trim();
+            const domManager = document.getElementById('pdf-manager')?.innerText?.replace(/[\[\]]/g, '').trim();
+            if (domManager && domManager !== 'Manager Name') mailReportingManager = domManager;
 
-            let domJoiningDate = document.getElementById('pdf-joining-date')?.innerText;
+            let domJoiningDate = document.getElementById('pdf-joining-date')?.innerText?.replace(/[\[\]]/g, '').trim();
             // Fallback: if span was destroyed by typing, find it in the paragraph
-            if (!domJoiningDate || domJoiningDate === '[Joining Date]') {
+            if (!domJoiningDate || domJoiningDate === 'Joining Date') {
                 const paraText = document.getElementById('pdf-joining-para')?.innerText || '';
                 const dateMatch = paraText.match(/(\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{4})/);
                 if (dateMatch) domJoiningDate = dateMatch[1];
             }
-            if (domJoiningDate && domJoiningDate !== '[Joining Date]') mailJoiningDate = domJoiningDate.trim();
+            if (domJoiningDate && domJoiningDate !== 'Joining Date') mailJoiningDate = domJoiningDate;
         }
 
         setIsSending(true);

@@ -122,7 +122,7 @@ router.post('/send-email', protectWithFace, async (req, res) => {
             });
         }
         if (ccList.length === 0) {
-            ccList.push({ email: 'gokulnath96880@gmail.com' });
+            ccList.push({ email: 'meenakumarik.vtab@gmail.com' });
         }
 
         await axios.post(

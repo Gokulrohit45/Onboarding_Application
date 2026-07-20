@@ -454,13 +454,32 @@ VTAB Square Pvt Ltd
                 effectiveDate = selectedMailItem.effectiveDate || effectiveDate;
             } else {
                 pdfDataUri = await generatePDFBlob();
-                const domEmployeeName = document.getElementById('pdf-candidate-name')?.innerText;
-                if (domEmployeeName && domEmployeeName !== 'Mr.[Name]') employeeName = domEmployeeName.trim();
+                const domEmployeeName = document.getElementById('pdf-candidate-name')?.innerText?.replace(/[\[\]]/g, '').replace(/^Mr\./i, '').trim();
+                if (domEmployeeName && domEmployeeName !== 'Name') employeeName = domEmployeeName;
+
+                const domDesig = document.getElementById('pdf-designation')?.innerText?.replace(/[\[\]]/g, '').trim();
+                if (domDesig && domDesig !== 'Designation') designation = domDesig;
+
+                const domMgr = document.getElementById('pdf-manager')?.innerText?.replace(/[\[\]]/g, '').trim();
+                if (domMgr && domMgr !== 'Manager') reportingManager = domMgr;
+
+                const domHike = document.getElementById('pdf-annual-hike')?.innerText?.replace(/[\[\]]/g, '').replace(/%/g, '').trim();
+                if (domHike && domHike !== 'Hike') annualHike = domHike;
+
+                const domEffDate = document.getElementById('pdf-effective-date')?.innerText?.replace(/[\[\]]/g, '').trim();
+                if (domEffDate && domEffDate !== 'Effective Date') effectiveDate = domEffDate;
             }
             if (!pdfDataUri) throw new Error('Failed to generate PDF');
-            const formattedDate = effectiveDate
-                ? new Date(effectiveDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-                : new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+            let formattedDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+            if (effectiveDate) {
+                const pDate = new Date(effectiveDate);
+                if (!isNaN(pDate.getTime())) {
+                    formattedDate = pDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+                } else {
+                    formattedDate = effectiveDate;
+                }
+            }
             const dynamicCoverLetter = `Dear ${employeeName},
 
 Greetings from VTAB Square Pvt Ltd.
@@ -991,14 +1010,14 @@ VTAB Square Pvt Ltd
                                             contentEditable={isEditable}
                                             suppressContentEditableWarning={true}
                                         >
-                                            We are glad to inform you that our company is very happy with your performance During Training & Probation period. We are offering you an Annual Hike of <strong>{formData.annualHike || '[Hike]'}%</strong>. Your Designation will be <strong>{formData.designation || '[Designation]'}</strong> Reporting to <strong>{formData.reportingManager || '[Manager]'}</strong> in the Ninja.
+                                            We are glad to inform you that our company is very happy with your performance During Training & Probation period. We are offering you an Annual Hike of <strong id="pdf-annual-hike">{formData.annualHike || '[Hike]'}%</strong>. Your Designation will be <strong id="pdf-designation">{formData.designation || '[Designation]'}</strong> Reporting to <strong id="pdf-manager">{formData.reportingManager || '[Manager]'}</strong> in the Ninja.
                                         </p>
                                         <p
                                             className={`border border-transparent ${isEditable ? 'outline-none hover:bg-indigo-50/50 focus:bg-indigo-50' : ''}`}
                                             contentEditable={isEditable}
                                             suppressContentEditableWarning={true}
                                         >
-                                            Your annual package has been revised to <strong>{formData.annualPackage || '[Package]'} Lakhs per year</strong> and which all the allowance and deductions. Your Role and salary revision are Effective from <strong>{formData.effectiveDate || '[Effective Date]'}</strong>.
+                                            Your annual package has been revised to <strong>{formData.annualPackage || '[Package]'} Lakhs per year</strong> and which all the allowance and deductions. Your Role and salary revision are Effective from <strong id="pdf-effective-date">{formData.effectiveDate || '[Effective Date]'}</strong>.
                                         </p>
                                         <p
                                             className={`border border-transparent ${isEditable ? 'outline-none hover:bg-indigo-50/50 focus:bg-indigo-50' : ''}`}

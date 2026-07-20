@@ -5,7 +5,7 @@ const supabase = require('../config/supabase');
 const { protect } = require('../middleware/authMiddleware');
 
 // Admin email is hardcoded to the static address requested
-const ADMIN_EMAIL = 'gokulnath96880@gmail.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'meenakumarik.vtab@gmail.com';
 
 // ======================================================
 // 🔹 GENERATE OTP
@@ -115,14 +115,14 @@ router.get('/default-cc', protect, async (req, res) => {
         if (error) throw error;
 
         if (!data || data.length === 0) {
-            return res.json({ success: true, emails: ['gokulnath96880@gmail.com'] });
+            return res.json({ success: true, emails: ['meenakumarik.vtab@gmail.com'] });
         }
 
         res.json({ success: true, emails: data.map(r => r.email) });
     } catch (err) {
         console.error('Fetch default CC error:', err.message);
         // Return fallback list so the app works even if the table isn't created yet
-        res.json({ success: true, emails: ['gokulnath96880@gmail.com'] });
+        res.json({ success: true, emails: ['meenakumarik.vtab@gmail.com'] });
     }
 });
 

@@ -409,8 +409,11 @@ VTAB Square Pvt Ltd
                 role = selectedMailItem.businessTitle || selectedMailItem.jobTitle || 'Data Analyst';
             } else {
                 pdfDataUri = await generatePDFBlob();
-                const domEmployeeName = document.getElementById('pdf-candidate-name')?.innerText;
-                if (domEmployeeName && domEmployeeName !== '[Name]') employeeName = domEmployeeName.trim();
+                const domEmployeeName = document.getElementById('pdf-candidate-name')?.innerText?.replace(/[\[\]]/g, '').replace(/^Mr\./i, '').trim();
+                if (domEmployeeName && domEmployeeName !== 'Name') employeeName = domEmployeeName;
+
+                const domRole = document.getElementById('pdf-job-title')?.innerText?.replace(/[\[\]]/g, '').trim();
+                if (domRole && domRole !== 'Job Title') role = domRole;
             }
 
             if (!pdfDataUri) throw new Error('Failed to generate PDF');
@@ -787,7 +790,7 @@ VTAB Square Pvt Ltd
                                             contentEditable={isEditable}
                                             suppressContentEditableWarning={true}
                                         >
-                                            This is also to certify that you had worked with the company from <strong>{formData.fromDate || '[From Date]'}</strong>, and Job Title at the time of relieving is <strong>{formData.jobTitle || '[Job Title]'}</strong> and your business title <strong>&quot;{formData.businessTitle || '[Business Title]'}&quot;</strong>. and last day of working with as is <strong>{formData.relievingDate || '[Relieving Date]'}</strong>.
+                                            This is also to certify that you had worked with the company from <strong>{formData.fromDate || '[From Date]'}</strong>, and Job Title at the time of relieving is <strong id="pdf-job-title">{formData.jobTitle || '[Job Title]'}</strong> and your business title <strong>&quot;{formData.businessTitle || '[Business Title]'}&quot;</strong>. and last day of working with as is <strong>{formData.relievingDate || '[Relieving Date]'}</strong>.
                                         </p>
                                         <p
                                             className={`border border-transparent ${isEditable ? 'outline-none hover:bg-indigo-50/50 focus:bg-indigo-50' : ''}`}

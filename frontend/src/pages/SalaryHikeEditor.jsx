@@ -484,17 +484,31 @@ VTAB Square Pvt Ltd
                 setMailStatus({ type: 'error', message: 'Failed to generate PDF' });
                 return;
             }
-            const domEmployeeName = document.getElementById('pdf-candidate-name')?.innerText;
-            if (domEmployeeName && domEmployeeName !== '[Name]') {
-                candidateName = domEmployeeName.trim();
+            const domEmployeeName = document.getElementById('pdf-candidate-name')?.innerText?.replace(/[\[\]]/g, '').trim();
+            if (domEmployeeName && domEmployeeName !== 'Name') {
+                candidateName = domEmployeeName;
             } else {
                 candidateName = formData.employeeName || 'Employee';
             }
             customFileName = `Salary_Hike_Notification_${candidateName}_${Date.now()}.pdf`;
 
-            const formattedDate = formData.effectiveDate
-                ? new Date(formData.effectiveDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-                : '24 April 2025';
+            const rawDomDate = document.getElementById('pdf-effective-date')?.innerText?.replace(/[\[\]]/g, '').trim();
+            const rawDate = rawDomDate || formData.effectiveDate;
+            let formattedDate = '24 April 2025';
+            if (rawDate) {
+                const parsedDate = new Date(rawDate);
+                if (!isNaN(parsedDate.getTime())) {
+                    formattedDate = parsedDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+                } else {
+                    formattedDate = rawDate;
+                }
+            }
+
+            const rawDomSalary = document.getElementById('pdf-new-salary')?.innerText?.replace(/[\[\]]/g, '').trim();
+            let salaryText = rawDomSalary || formData.newSalary || '20,000';
+            if (!salaryText.toLowerCase().includes('inr') && !salaryText.toLowerCase().includes('rs')) {
+                salaryText = `INR ${salaryText}`;
+            }
 
             dynamicCoverLetter = `Dear Mr. ${candidateName},
 
@@ -502,7 +516,7 @@ Greetings from VTAB Square Pvt Ltd.
 
 We are pleased to inform you that, based on your outstanding performance and valuable contributions to the organization, your compensation has been reviewed and revised.
 
-Please find attached your Salary Hike Notification Letter for your reference. As per the revision, your new annual salary will be INR ${formData.newSalary || '20,000'} per annum, and the updated compensation will be effective from ${formattedDate}.
+Please find attached your Salary Hike Notification Letter for your reference. As per the revision, your new annual salary will be ${salaryText} per annum, and the updated compensation will be effective from ${formattedDate}.
 
 We appreciate your hard work, dedication, and the value you bring to the organization. This revision reflects our recognition of your efforts and commitment to the continued success of VTAB Square Pvt Ltd.
 
@@ -1025,7 +1039,7 @@ VTAB Square Pvt Ltd
                                                     contentEditable={isEditable}
                                                     suppressContentEditableWarning={true}
                                                 >
-                                                    We are pleased to inform you that, based on your outstanding performance and contributions to <span className="font-bold text-[#0A2458]">VTAB Square Pvt Ltd Now Part of Siroco Technology</span>, we have reviewed your compensation. As a result, we are delighted to offer you a revised salary, effective from <span className="font-bold">[{formData.effectiveDate}]</span>.
+                                                    We are pleased to inform you that, based on your outstanding performance and contributions to <span className="font-bold text-[#0A2458]">VTAB Square Pvt Ltd Now Part of Siroco Technology</span>, we have reviewed your compensation. As a result, we are delighted to offer you a revised salary, effective from <span className="font-bold" id="pdf-effective-date">[{formData.effectiveDate}]</span>.
                                                 </p>
                                             </div>
 
@@ -1035,7 +1049,7 @@ VTAB Square Pvt Ltd
                                                     contentEditable={isEditable}
                                                     suppressContentEditableWarning={true}
                                                 >
-                                                    Your new annual salary will be <span className="font-bold">INR {formData.newSalary} per annum.</span>
+                                                    Your new annual salary will be <span className="font-bold" id="pdf-new-salary">INR {formData.newSalary} per annum.</span>
                                                 </li>
                                                 <li
                                                     className={`${isEditable ? 'outline-none hover:bg-indigo-50/50 focus:bg-indigo-50' : ''}`}
